@@ -25,7 +25,6 @@ def load_from_file():
             return {}
     return {}
 
-# Load data into a local variable, NOT session_state directly to avoid the crash
 saved_data = load_from_file()
 
 # --- 2. CONFIGURATION & PDF PRINT STYLING ---
@@ -54,7 +53,6 @@ with st.sidebar:
     st.header("👤 Income Inputs")
     st.info("Input your T4 details. These numbers are used to calculate your 'Tax Building' height.")
     
-    # We use saved_data.get(key, 0) so it defaults to 0 if reset or empty
     t4_gross_income = st.number_input(
         "T4 Gross Income (Total)", 
         value=float(saved_data.get("t4_gross_income", 0)), 
@@ -96,7 +94,6 @@ with st.sidebar:
             st.success("Saved!")
     
     with c_reset:
-        # FIXED RESET: Deletes file and clears state without direct assignment
         if st.button("🔄 Reset to 0"):
             if os.path.exists(SAVE_FILE): 
                 os.remove(SAVE_FILE)
@@ -107,7 +104,6 @@ with st.sidebar:
 annual_rrsp_periodic = base_salary * ((biweekly_pct + employer_match) / 100)
 total_rrsp_contributions = annual_rrsp_periodic + rrsp_lump_sum
 taxable_income_for_chart = t4_gross_income - total_rrsp_contributions
-tax_cliff = 181440 
 
 final_rrsp_room = max(0.0, rrsp_room - total_rrsp_contributions)
 final_tfsa_room = max(0.0, tfsa_room - tfsa_lump_sum)
@@ -152,7 +148,6 @@ with ac3:
 st.divider()
 st.subheader("🏢 The Tax Building Visualizer")
 
-
 BRACKETS = [
     {"Floor": "Floor 1", "low": 0, "top": 53891, "rate": 0.1905},
     {"Floor": "Floor 2", "low": 53891, "top": 58523, "rate": 0.2315},
@@ -173,10 +168,14 @@ for b in BRACKETS:
     if taxed_amt > 0:
         building_data.append({"Floor": b['Floor'], "Amount": taxed_amt, "Status": "Taxed", "Rate": f"{b['rate']*100:.1f}%"})
 
-chart = alt.Chart(pd.DataFrame(building_data)).mark_bar().encode(
-    x=alt.X('Floor:N', sort=None),
-    y=alt.Y('Amount:Q', title="Income ($)"),
-    color=alt.Color('Status:N', scale=alt.Scale(domain=['Shielded', 'Taxed'], range=['#3b82f6', '#f59e0b'])),
-    tooltip=['Floor', 'Amount', 'Rate', 'Status']
-).properties(height=400)
-st.altair_chart(chart, use_container_width=True)
+# FIXED: Check if building_data is empty before rendering chart
+if not building_data:
+    st.info("Enter a T4 Gross Income in the sidebar to visualize your Tax Building.")
+else:
+    chart = alt.Chart(pd.DataFrame(building_data)).mark_bar().encode(
+        x=alt.X('Floor:N', sort=None),
+        y=alt.Y('Amount:Q', title="Income ($)"),
+        color=alt.Color('Status:N', scale=alt.Scale(domain=['Shielded', 'Taxed'], range=['#3b82f6', '#f59e0b'])),
+        tooltip=['Floor', 'Amount', 'Rate', 'Status']
+    ).properties(height=400)
+    st.altair_chart(chart, use_container_width=True)
