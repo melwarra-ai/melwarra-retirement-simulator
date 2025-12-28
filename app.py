@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import altair as alt  # <--- Corrected this line
+import altair as alt
 import json
 import os
 import streamlit.components.v1 as components
@@ -65,8 +65,20 @@ def description_box(title, content):
 # --- 4. PAGE: HOME ---
 if st.session_state.current_page == "Home":
     st.title("🏠 Strategy Dashboard")
-    description_box("System Overview", "Welcome to your multi-year financial command center. Select a year tile to manage specific strategies. The dashboard below tracks your aggregate progress across multiple tax years.")
     
+    # CALCULATE LIFETIME SAVINGS
+    total_lifetime_refunds = 0
+    if all_history:
+        for yr, data in all_history.items():
+            annual_rrsp = (data.get('base_salary', 0) * (data.get('biweekly_pct', 0) + data.get('employer_match', 0)) / 100) + data.get('rrsp_lump_sum', 0)
+            total_lifetime_refunds += (annual_rrsp * 0.46) # Estimated average refund rate
+
+    c_top1, c_top2 = st.columns([2, 1])
+    with c_top1:
+        description_box("System Overview", "Welcome to your multi-year financial command center. Select a year tile to manage specific strategies. The dashboard below tracks your aggregate progress across multiple tax years.")
+    with c_top2:
+        st.metric("Total Tax Dollars Reclaimed", f"${total_lifetime_refunds:,.0f}", help="Sum of estimated tax refunds across all saved years.")
+
     st.subheader("📅 Planning Years")
     cols = st.columns(4)
     years_to_show = list(range(2024, 2030))
@@ -84,15 +96,15 @@ if st.session_state.current_page == "Home":
         st.subheader("📈 Strategic Growth Comparison")
         
         description_box("Understanding Your Strategic Growth", """
-        This section provides a visual audit of your wealth-building efficiency over time. It is designed to track two critical pillars of financial health:
+        This section provides a visual audit of your wealth-building efficiency over time. 
         
         **1. Tax Shielding Efficiency (Bar Chart)**
-        * **Gross Income (Grey):** This represents your total earnings before any intervention.
-        * **Taxable Income (Blue):** This is the outcome of your strategy. By using RRSP contributions, you 'shield' a portion of your income. The gap between Grey and Blue represents income you earned that you do not pay taxes on today.
+        * **Gross Income (Grey):** Your total earnings before intervention.
+        * **Taxable Income (Blue):** Your income after RRSP deductions. The gap represents money you earned but successfully 'shielded' from current taxation.
         
         **2. Capital Accumulation Momentum (Line Chart)**
-        * This tracks the **Total Annual Savings** (RRSP + TFSA) you have committed to your future. 
-        * A rising line indicates that your capacity to save is increasing, or you are becoming more disciplined in capturing surplus income.
+        * Tracks your **Total Annual Savings** (RRSP + TFSA).
+        * A rising line indicates growing financial discipline or increasing contribution capacity.
         """)
 
         # Prepare Data
