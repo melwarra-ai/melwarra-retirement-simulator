@@ -5,7 +5,7 @@ import json
 import os
 import streamlit.components.v1 as components
 
-# --- 1. PERSISTENCE ENGINE (Save Data to File) ---
+# --- 1. PERSISTENCE ENGINE ---
 SAVE_FILE = "retirement_data.json"
 
 def save_to_file(data):
@@ -25,13 +25,11 @@ def load_from_file():
             return {}
     return {}
 
-# Load data immediately on app startup
 saved_data = load_from_file()
 
-# --- 2. CONFIGURATION & PRINT STYLING ---
+# --- 2. CONFIGURATION & CSS ---
 st.set_page_config(page_title="Retirement Architect Pro", layout="wide")
 
-# CSS to hide buttons/sidebar when printing to PDF
 st.markdown("""
     <style>
     @media print {
@@ -43,35 +41,31 @@ st.markdown("""
 
 st.title("🏛️ Retirement Architect: Master Strategy Pro")
 
-# --- 3. SIDEBAR: INPUTS WITH PERSISTENCE ---
+# --- 3. SIDEBAR: INPUTS ---
 with st.sidebar:
-    st.header("👤 Income Profile")
+    st.header("👤 Income Inputs")
     
-    # T4 Gross Input (Specific Label & Help Text)
-    t4_gross_other = st.number_input(
-        "T4 Gross Income", 
-        value=saved_data.get("t4_gross_other", 0), 
-        help="This is the T4 gross reported in T4 document",
-        key="t4_gross_other"
+    # LOGIC RULE 1: Used ONLY for Tax Building Visualizer
+    t4_gross_income = st.number_input(
+        "T4 Gross Income (Total)", 
+        value=saved_data.get("t4_gross_income", 235000), 
+        step=5000,
+        help="This is the total T4 gross reported in your T4 document (Box 14). Used for visualizer only.",
+        key="t4_gross_income"
     )
     
+    # LOGIC RULE 2: Used ONLY for Biweekly Calculation
     base_salary = st.number_input(
         "Annual Base Salary ($)", 
         value=saved_data.get("base_salary", 180000), 
         step=5000, 
+        help="Used strictly to calculate employer match and biweekly %.",
         key="base_salary"
     )
     
-    bonus_pct = st.slider(
-        "Target Bonus (%)", 
-        0, 50, 
-        value=saved_data.get("bonus_pct", 15), 
-        key="bonus_pct"
-    )
-    
-    st.header("💰 RRSP & TFSA")
+    st.header("💰 Periodic Contributions (RRSP Only)")
     biweekly_pct = st.slider(
-        "Biweekly Contribution (%)", 0.0, 18.0, 
+        "Biweekly RRSP (%)", 0.0, 18.0, 
         value=saved_data.get("biweekly_pct", 6.0), 
         key="biweekly_pct"
     )
@@ -82,39 +76,38 @@ with st.sidebar:
         key="employer_match"
     )
     
-    lump_sum = st.number_input(
-        "March 2nd Lump Sum ($)", 
-        value=saved_data.get("lump_sum", 10000),
+    st.header("📅 March 1st Bulk Actions")
+    rrsp_lump_sum = st.number_input(
+        "RRSP Lump Sum ($)", 
+        value=saved_data.get("rrsp_lump_sum", 10000),
         step=1000,
-        key="lump_sum"
+        key="rrsp_lump_sum"
     )
     
-    rrsp_room = st.number_input(
-        "Unused RRSP Room ($)", 
-        value=saved_data.get("rrsp_room", 146000), 
-        key="rrsp_room"
+    tfsa_lump_sum = st.number_input(
+        "TFSA Lump Sum ($)", 
+        value=saved_data.get("tfsa_lump_sum", 7000),
+        step=1000,
+        key="tfsa_lump_sum"
     )
     
-    tfsa_room = st.number_input(
-        "Unused TFSA Room ($)", 
-        value=saved_data.get("tfsa_room", 102000), 
-        key="tfsa_room"
-    )
+    st.header("📁 Available Room")
+    rrsp_room = st.number_input("Unused RRSP Room", value=saved_data.get("rrsp_room", 146000), key="rrsp_room")
+    tfsa_room = st.number_input("Unused TFSA Room", value=saved_data.get("tfsa_room", 102000), key="tfsa_room")
 
     st.divider()
     
-    # PERSISTENCE BUTTONS
+    # SAVE / RESET BUTTONS
     c_save, c_reset = st.columns(2)
     with c_save:
         if st.button("💾 Save Inputs"):
-            # Collect current state
             current_state = {
-                "t4_gross_other": t4_gross_other,
+                "t4_gross_income": t4_gross_income,
                 "base_salary": base_salary,
-                "bonus_pct": bonus_pct,
                 "biweekly_pct": biweekly_pct,
                 "employer_match": employer_match,
-                "lump_sum": lump_sum,
+                "rrsp_lump_sum": rrsp_lump_sum,
+                "tfsa_lump_sum": tfsa_lump_sum,
                 "rrsp_room": rrsp_room,
                 "tfsa_room": tfsa_room
             }
@@ -123,50 +116,63 @@ with st.sidebar:
     
     with c_reset:
         if st.button("🔄 Reset"):
-            if os.path.exists(SAVE_FILE):
-                os.remove(SAVE_FILE)
+            if os.path.exists(SAVE_FILE): os.remove(SAVE_FILE)
             st.rerun()
 
 # --- 4. CALCULATIONS ---
-bonus_amt = base_salary * (bonus_pct / 100)
-# Total Gross Logic (Base + Bonus + T4 Other)
-total_gross_income = base_salary + bonus_amt + t4_gross_other
-
+# RRSP Logic: Periodic is based on Base Salary, Total includes Lump Sum
 annual_rrsp_periodic = base_salary * ((biweekly_pct + employer_match) / 100)
-total_rrsp_contributions = annual_rrsp_periodic + lump_sum
-taxable_income = total_gross_income - total_rrsp_contributions
+total_rrsp_contributions = annual_rrsp_periodic + rrsp_lump_sum
+
+# Taxable Income for Chart: Based on T4 Gross
+taxable_income_for_chart = t4_gross_income - total_rrsp_contributions
 tax_cliff = 181440 
 
-# Room Logic
+# Room Updates
 final_rrsp_room = max(0, rrsp_room - total_rrsp_contributions)
+final_tfsa_room = max(0, tfsa_room - tfsa_lump_sum)
 est_refund = total_rrsp_contributions * 0.46
-final_tfsa_room = max(0, tfsa_room - est_refund)
 
-# --- 5. HEADER & PRINT BUTTON ---
+# --- 5. HEADER & PRINT ---
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
-    st.header("📊 Strategy Execution & Room Status")
+    st.header("📊 Strategy Execution Dashboard")
 with col_h2:
-    # Javascript Print Trigger
-    print_btn = """
-    <script>function print_page() { window.print(); }</script>
-    <button onclick="print_page()" style="padding: 10px 20px; background-color: #3b82f6; color: white; border: none; border-radius: 5px; cursor: pointer; width: 100%; font-weight: bold;">
-        🖨️ Print / Save PDF
-    </button>
-    """
+    print_btn = """<script>function print_page() { window.print(); }</script>
+    <button onclick="print_page()" style="padding: 10px 20px; background-color: #3b82f6; color: white; border: none; border-radius: 5px; cursor: pointer; width: 100%; font-weight: bold;">🖨️ Print / Save PDF</button>"""
     components.html(print_btn, height=60)
 
-# --- 6. ROOM TRACKER TABLE ---
+# --- 6. ROOM TRACKER ---
 room_df = pd.DataFrame({
     "Account": ["RRSP Room", "TFSA Room"],
     "Starting Room": [f"${rrsp_room:,.0f}", f"${tfsa_room:,.0f}"],
-    "Strategy Usage": [f"-${total_rrsp_contributions:,.0f}", f"-${est_refund:,.0f}"],
+    "Strategy Usage": [f"-${total_rrsp_contributions:,.0f} (Periodic + Bulk)", f"-${tfsa_lump_sum:,.0f} (Bulk Only)"],
     "Post-Strategy Room": [f"${final_rrsp_room:,.0f}", f"${final_tfsa_room:,.0f}"]
 })
 st.table(room_df)
-st.metric("Total RRSP Contribution", f"${total_rrsp_contributions:,.0f}")
 
-# --- 7. TAX BUILDING VISUALIZER ---
+# --- 7. ACTION: BEFORE MARCH 1st ---
+st.divider()
+st.header("📅 Action Plan: Before March 1st")
+st.markdown("These actions must be executed before the deadline to impact your 2025 tax return.")
+
+ac1, ac2, ac3 = st.columns(3)
+with ac1:
+    st.subheader("1. RRSP Bulk")
+    st.metric("Lump Sum Target", f"${rrsp_lump_sum:,.0f}")
+    st.caption("Execute this transfer to clear your Penthouse tax bracket.")
+
+with ac2:
+    st.subheader("2. TFSA Bulk")
+    st.metric("Lump Sum Target", f"${tfsa_lump_sum:,.0f}")
+    st.caption("Invest this amount into your TFSA (No tax deduction, tax-free growth).")
+
+with ac3:
+    st.subheader("3. The Reward")
+    st.metric("Est. Tax Refund", f"${est_refund:,.0f}")
+    st.caption("Reinvest this refund immediately when it arrives in April/May.")
+
+# --- 8. TAX BUILDING VISUALIZER ---
 st.divider()
 st.subheader("🏢 The Tax Building (Progressive Shielding)")
 BRACKETS = [
@@ -180,9 +186,12 @@ BRACKETS = [
 
 building_data = []
 for b in BRACKETS:
-    total_in_bracket = min(total_gross_income, b['top']) - b['low']
+    # Use T4 Gross for chart height
+    total_in_bracket = min(t4_gross_income, b['top']) - b['low']
     if total_in_bracket <= 0: continue
-    taxed_amt = max(0, min(b['top'], taxable_income) - b['low'])
+    
+    # Use Total RRSP (Periodic + Lump) to calculate shielding
+    taxed_amt = max(0, min(b['top'], taxable_income_for_chart) - b['low'])
     shielded_amt = total_in_bracket - taxed_amt
     
     if shielded_amt > 0:
@@ -198,27 +207,16 @@ chart = alt.Chart(pd.DataFrame(building_data)).mark_bar().encode(
 ).properties(height=400)
 st.altair_chart(chart, use_container_width=True)
 
-# --- 8. ACTION ITEMS & BONUS LOGIC ---
+# --- 9. SUMMARY ---
 st.divider()
-st.header("🛡️ Strategic Action Items")
-tax_on_bonus = bonus_amt * 0.4829
-
-st.warning(f"**Bonus Shield:** If you receive your **${bonus_amt:,.0f}** bonus as cash, you lose roughly **${tax_on_bonus:,.0f}** to immediate tax. Execute the direct-to-RRSP transfer to keep the full amount.")
-
-c1, c2 = st.columns(2)
-with c1:
-    with st.expander("📝 March 2nd Checklist", expanded=True):
-        st.write(f"- **March 2 Lump Sum:** Deposit **${lump_sum:,.0f}**.")
-        st.write(f"- **T1213 Form:** File using **${total_rrsp_contributions:,.0f}** total deduction.")
-with c2:
-    st.success(f"**TFSA Pivot:** Inject the estimated refund of **${est_refund:,.0f}** into your TFSA.")
-
-# --- 9. RETIREMENT BRIDGE ---
-st.divider()
-st.subheader("🌉 The Age 55 Retirement Bridge")
-bridge_df = pd.DataFrame({
-    "Asset": ["TFSA (The Bridge)", "RRSP (The Foundation)", "CPP/OAS (Gov)"],
-    "Role": ["Income Age 55-65", "Income Age 65+", "Supplement Age 65+"],
-    "Tax Status": ["Tax-Free", "Taxable", "Taxable"]
+st.subheader("📊 Retirement Strategy Summary")
+summary_df = pd.DataFrame({
+    "Action": ["RRSP (High Value)", "RRSP (Low Value)", "TFSA"],
+    "Current Impact": [
+        f"${max(0, taxable_income_for_chart - tax_cliff):,.0f} still in Penthouse",
+        f"${min(taxable_income_for_chart, tax_cliff):,.0f} in lower floors",
+        f"${final_tfsa_room:,.0f} available room"
+    ],
+    "Priority": ["1st - Immediate 48% ROI", "3rd - Tax Deferral only", "2nd - Tax-Free Growth"]
 })
-st.table(bridge_df)
+st.table(summary_df)
