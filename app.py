@@ -32,55 +32,46 @@ def delete_year_data(year):
 
 all_history = load_all_data()
 
-# --- 2. NAVIGATION STATE ---
+# --- 2. NAVIGATION & SESSION STATE ---
 if "current_page" not in st.session_state:
     st.session_state.current_page = "Home"
 if "selected_year" not in st.session_state:
     st.session_state.selected_year = 2025
 
-# --- 3. CONFIGURATION & CUSTOM STYLING ---
+# --- 3. CONFIGURATION & STYLING ---
 st.set_page_config(page_title="TAX RRSP/TFSA Planner", layout="wide")
 
 st.markdown("""
     <style>
     .desc-box {
         background-color: #f8fafc; 
-        padding: 18px; 
+        padding: 20px; 
         border-radius: 12px; 
-        border-left: 5px solid #3b82f6;
+        border-left: 6px solid #3b82f6;
         margin-bottom: 25px;
         color: #334155;
-        line-height: 1.6;
     }
-    .input-label {
-        font-weight: bold;
-        color: #1e293b;
-        margin-bottom: -15px;
-    }
-    .step-text {
-        margin-bottom: 8px;
-        display: block;
-    }
+    .status-saved { color: #16a34a; font-weight: bold; margin-top: 10px; display: block; }
     @media print {
         div[data-testid="stSidebar"], .stButton, button, header, footer, [data-testid="stToolbar"] {
             display: none !important;
-        }
-        .main .block-container {
-            max-width: 100% !important;
-            padding: 0 !important;
-            margin: 0 !important;
         }
     }
     </style>
     """, unsafe_allow_html=True)
 
-def description_box(text):
-    st.markdown(f'<div class="desc-box">{text}</div>', unsafe_allow_html=True)
+def description_box(title, content):
+    st.markdown(f'''
+        <div class="desc-box">
+            <h4 style="margin-top:0; color:#1e293b;">{title}</h4>
+            <div style="line-height:1.6;">{content}</div>
+        </div>
+    ''', unsafe_allow_html=True)
 
 # --- 4. PAGE: HOME ---
 if st.session_state.current_page == "Home":
     st.title("🏠 Strategy Dashboard")
-    description_box("**Overview:** This dashboard provides a bird's-eye view of your multi-year financial planning. Select a specific year tile to adjust inputs or view the detailed tax breakdown for that period.")
+    description_box("System Overview", "Welcome to your multi-year financial command center. Select a year tile to adjust your plan. The charts below automatically aggregate your data to show your tax-shielding progress.")
     
     st.subheader("📅 Planning Years")
     cols = st.columns(4)
@@ -88,8 +79,9 @@ if st.session_state.current_page == "Home":
     
     for i, yr in enumerate(years_to_show):
         with cols[i % 4]:
-            status = "✅ Saved" if str(yr) in all_history else "⚪ Empty"
-            if st.button(f"📅 {yr}\n({status})", use_container_width=True):
+            is_saved = str(yr) in all_history
+            label = f"📅 {yr}\n(SAVED)" if is_saved else f"📅 {yr}\n(EMPTY)"
+            if st.button(label, use_container_width=True, key=f"home_{yr}"):
                 st.session_state.selected_year = yr
                 st.session_state.current_page = "Year View"
                 st.rerun()
@@ -97,7 +89,6 @@ if st.session_state.current_page == "Home":
     if all_history:
         st.divider()
         st.subheader("📈 Strategic Growth Comparison")
-        description_box("**Analytics:** These charts track your performance over time. The **Income vs. Taxable Income** chart demonstrates the 'Tax Shield' effect of your RRSP, while the **Savings Volume** tracks your total capital accumulation.")
         
         chart_data = []
         for yr, data in all_history.items():
@@ -112,37 +103,18 @@ if st.session_state.current_page == "Home":
 
         c1, c2 = st.columns(2)
         with c1:
-            st.write("**Tax Shield Performance**")
-            melted_income = df_chart.melt('Year', value_vars=['Gross Income', 'Taxable Income'])
-            income_chart = alt.Chart(melted_income).mark_bar(opacity=0.8).encode(
+            st.write("**Income vs. Taxable Footprint**")
+            income_chart = alt.Chart(df_chart.melt('Year', value_vars=['Gross Income', 'Taxable Income'])).mark_bar(opacity=0.8).encode(
                 x='Year:N', y=alt.Y('value:Q', title="Amount ($)", stack=None),
-                color=alt.Color('variable:N', scale=alt.Scale(range=['#94a3b8', '#3b82f6'])),
-                tooltip=['Year', 'variable', 'value']
+                color=alt.Color('variable:N', scale=alt.Scale(range=['#94a3b8', '#3b82f6']))
             ).properties(height=300)
             st.altair_chart(income_chart, use_container_width=True)
-
         with c2:
-            st.write("**Contribution Momentum**")
+            st.write("**Net Annual Savings Growth**")
             savings_chart = alt.Chart(df_chart).mark_line(point=True, color='#10b981').encode(
-                x='Year:N', y=alt.Y('Total Savings:Q', title="Total Saved ($)"),
-                tooltip=['Year', 'Total Savings']
+                x='Year:N', y=alt.Y('Total Savings:Q', title="Total Saved ($)")
             ).properties(height=300)
             st.altair_chart(savings_chart, use_container_width=True)
-
-    st.divider()
-    st.subheader("📜 Execution History Log")
-    description_box("**Audit Trail:** A tabular summary of your historical inputs and saved execution strategies.")
-    if all_history:
-        history_list = []
-        for yr, data in all_history.items():
-            annual_rrsp = (data.get('base_salary', 0) * (data.get('biweekly_pct', 0) + data.get('employer_match', 0)) / 100) + data.get('rrsp_lump_sum', 0)
-            history_list.append({
-                "Year": yr, "Gross Income": f"${data.get('t4_gross_income', 0):,.0f}",
-                "RRSP Total": f"${annual_rrsp:,.0f}", "TFSA Lump Sum": f"${data.get('tfsa_lump_sum', 0):,.0f}"
-            })
-        st.table(pd.DataFrame(history_list).sort_values(by="Year", ascending=False))
-    else:
-        st.info("No saved strategies found. Click a year tile above to start planning.")
 
 # --- 5. PAGE: YEAR VIEW ---
 else:
@@ -155,47 +127,18 @@ else:
             st.rerun()
         
         st.header(f"⚙️ {selected_year} Parameters")
+        t4_gross_income = st.number_input("Annual T4 Gross Income", value=float(year_data.get("t4_gross_income", 0)), step=5000.0)
+        base_salary = st.number_input("Annual Base Salary", value=float(year_data.get("base_salary", 0)), step=5000.0)
         
-        st.markdown("**1. Annual T4 Gross Income**")
-        st.caption("Your total income before any deductions (found on your T4).")
-        t4_gross_income = st.number_input("T4 Gross", label_visibility="collapsed", value=float(year_data.get("t4_gross_income", 0)), step=5000.0)
+        st.header("💰 Contribution Logic")
+        biweekly_pct = st.slider("Biweekly RRSP (%)", 0.0, 18.0, value=float(year_data.get("biweekly_pct", 0.0)))
+        employer_match = st.slider("Employer Match (%)", 0.0, 10.0, value=float(year_data.get("employer_match", 0.0)))
+        rrsp_lump_sum = st.number_input("RRSP Bulk Deposit", value=float(year_data.get("rrsp_lump_sum", 0)))
+        tfsa_lump_sum = st.number_input("TFSA Bulk Deposit", value=float(year_data.get("tfsa_lump_sum", 0)))
         
-        st.markdown("**2. Annual Base Salary**")
-        st.caption("The fixed portion of your pay used to calculate bi-weekly RRSP deductions.")
-        base_salary = st.number_input("Base Salary", label_visibility="collapsed", value=float(year_data.get("base_salary", 0)), step=5000.0)
-        
-        st.divider()
-        st.header("💰 Payroll Contributions")
-        
-        st.markdown("**Biweekly RRSP (%)**")
-        st.caption("Percentage of your base salary deducted every pay period.")
-        biweekly_pct = st.slider("Biweekly %", 0.0, 18.0, value=float(year_data.get("biweekly_pct", 0.0)), label_visibility="collapsed")
-        
-        st.markdown("**Employer Match (%)**")
-        st.caption("The percentage your company contributes to your RRSP.")
-        employer_match = st.slider("Match %", 0.0, 10.0, value=float(year_data.get("employer_match", 0.0)), label_visibility="collapsed")
-        
-        st.divider()
-        st.header("📅 One-Time Deposits")
-        
-        st.markdown("**RRSP Lump Sum**")
-        st.caption("Additional manual cash deposits to RRSP before March 1st.")
-        rrsp_lump_sum = st.number_input("RRSP Bulk", label_visibility="collapsed", value=float(year_data.get("rrsp_lump_sum", 0)))
-        
-        st.markdown("**TFSA Lump Sum**")
-        st.caption("Total planned contributions to your Tax-Free Savings Account.")
-        tfsa_lump_sum = st.number_input("TFSA Bulk", label_visibility="collapsed", value=float(year_data.get("tfsa_lump_sum", 0)))
-        
-        st.divider()
-        st.header("📁 Available Room")
-        
-        st.markdown("**Unused RRSP Room**")
-        st.caption("Your deduction limit from your latest Notice of Assessment.")
-        rrsp_room = st.number_input("RRSP Room", label_visibility="collapsed", value=float(year_data.get("rrsp_room", 0)))
-        
-        st.markdown("**Unused TFSA Room**")
-        st.caption("Your total available TFSA contribution room.")
-        tfsa_room = st.number_input("TFSA Room", label_visibility="collapsed", value=float(year_data.get("tfsa_room", 0)))
+        st.header("📁 NOA Limits")
+        rrsp_room = st.number_input("Unused RRSP Room", value=float(year_data.get("rrsp_room", 0)))
+        tfsa_room = st.number_input("Unused TFSA Room", value=float(year_data.get("tfsa_room", 0)))
 
         st.divider()
         c_save, c_reset = st.columns(2)
@@ -207,108 +150,89 @@ else:
                     "rrsp_lump_sum": rrsp_lump_sum, "tfsa_lump_sum": tfsa_lump_sum,
                     "rrsp_room": rrsp_room, "tfsa_room": tfsa_room
                 })
-                st.success("Saved!")
-                st.rerun()
+                st.session_state.saved_flag = True
+            
+            if st.session_state.get("saved_flag"):
+                st.markdown('<p class="status-saved">✓ Saved!</p>', unsafe_allow_html=True)
+                st.session_state.saved_flag = False
+        
         with c_reset:
-            if st.session_state.get("confirm_reset"):
-                if st.button("✅ Confirm?", use_container_width=True):
-                    delete_year_data(selected_year)
-                    st.session_state.confirm_reset = False
-                    st.rerun()
-            elif st.button("🔄 Reset", use_container_width=True):
-                st.session_state.confirm_reset = True
+            if st.button("🔄 Reset", use_container_width=True):
+                delete_year_data(selected_year)
                 st.rerun()
 
     # --- MAIN RIGHT PANEL ---
     st.title(f"🏛️ Execution Strategy: {selected_year}")
     
-    # 1. QUICK START GUIDE (REFORMATTED)
-    st.header("🚀 Quick Start Guide")
-    description_box(f"""
-    **1. Input Data:** Use the sidebar to enter your Income and Room Limits for **{selected_year}**.  
-    **2. Review Deadlines:** Check the 'March 1st Deadlines' section for immediate actions.  
-    **3. Visualize Savings:** Look at the 'Tax Building' to see how your RRSP 'shields' your income.  
-    **4. Optimize:** Adjust your Lump Sums to eliminate income in the orange 'Taxed' zones.  
-    **5. Finalize:** Hit 'Save' to record your **{selected_year}** execution strategy.
+    description_box("Quick Start Checklist", f"""
+    1. **Data Entry:** Enter gross income and contribution % in the sidebar.<br>
+    2. **Verification:** Confirm March 1st bulk deposits are scheduled.<br>
+    3. **Optimization:** Check the 'Penthouse' status in the priority table below.<br>
+    4. **Finalize:** Click Save and export as PDF for your records.
     """)
 
     # Calculations
     annual_rrsp_periodic = base_salary * ((biweekly_pct + employer_match) / 100)
     total_rrsp_contributions = annual_rrsp_periodic + rrsp_lump_sum
-    taxable_income_for_chart = t4_gross_income - total_rrsp_contributions
-    est_refund = total_rrsp_contributions * 0.46
+    taxable_income = t4_gross_income - total_rrsp_contributions
+    tax_cliff = 181440 
 
-    # 2. ACTION PLAN
+    # Action Metrics
     col_h1, col_h2 = st.columns([3, 1])
-    with col_h1:
-        st.subheader(f"📅 March 1st Deadlines ({selected_year})")
-        description_box("**Action Plan:** These are your critical execution targets. Ensure bulk deposits are transferred before the deadline to qualify for the current tax year.")
-    with col_h2:
-        components.html('<button onclick="window.print()" style="width: 100%; height: 50px; background-color: #3b82f6; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">📄 Save as PDF</button>', height=70)
+    with col_h1: st.subheader(f"📅 March 1st Deadlines ({selected_year})")
+    with col_h2: components.html('<button onclick="window.print()" style="width: 100%; height: 50px; background-color: #3b82f6; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">📄 Save PDF</button>', height=70)
 
     ac1, ac2, ac3 = st.columns(3)
-    with ac1: st.metric("RRSP Bulk Deposit", f"${rrsp_lump_sum:,.0f}")
-    with ac2: st.metric("TFSA Bulk Deposit", f"${tfsa_lump_sum:,.0f}")
-    with ac3: st.metric("Expected Tax Refund", f"${est_refund:,.0f}")
+    ac1.metric("RRSP Bulk", f"${rrsp_lump_sum:,.0f}")
+    ac2.metric("TFSA Bulk", f"${tfsa_lump_sum:,.0f}")
+    ac3.metric("Est. Refund", f"${total_rrsp_contributions * 0.46:,.0f}")
 
-    # 3. ROOM TRACKER
-    st.divider()
-    st.subheader("🏦 Registration Room Status")
-    description_box("**Room Analysis:** This table tracks how much of your legal contribution limit you are utilizing. Remaining room can be carried forward to future years.")
-    room_df = pd.DataFrame({
-        "Account": ["RRSP Room", "TFSA Room"],
-        "Starting": [f"${rrsp_room:,.0f}", f"${tfsa_room:,.0f}"],
-        "Usage": [f"-${total_rrsp_contributions:,.0f}", f"-${tfsa_lump_sum:,.0f}"],
-        "Remaining": [f"${max(0, rrsp_room - total_rrsp_contributions):,.0f}", f"${max(0, tfsa_room - tfsa_lump_sum):,.0f}"]
-    })
-    st.table(room_df)
-
-    # 4. THE TAX BUILDING
     st.divider()
     st.subheader("🏢 The Tax Building Visualizer")
-    description_box("**Visual Strategy:** The **Blue (Shielded)** blocks show income that is successfully protected from tax by your RRSP. The **Orange (Taxed)** blocks represent income subject to marginal rates. Aim to 'shield' the highest floors first.")
-
     
-
+    
     BRACKETS = [
-        {"Floor": "Floor 1", "low": 0, "top": 53891, "rate": 0.1905},
-        {"Floor": "Floor 2", "low": 53891, "top": 58523, "rate": 0.2315},
-        {"Floor": "Floor 3", "low": 58523, "top": 94907, "rate": 0.2965},
-        {"Floor": "Floor 4", "low": 94907, "top": 117045, "rate": 0.3148},
-        {"Floor": "Floor 5", "low": 117045, "top": 181440, "rate": 0.4497}, 
-        {"Floor": "Penthouse", "low": 181440, "top": 258482, "rate": 0.4829}
+        {"Floor": "Floor 1", "low": 0, "top": 53891},
+        {"Floor": "Floor 2", "low": 53891, "top": 58523},
+        {"Floor": "Floor 3", "low": 58523, "top": 94907},
+        {"Floor": "Floor 4", "low": 94907, "top": 117045},
+        {"Floor": "Floor 5", "low": 117045, "top": 181440}, 
+        {"Floor": "Penthouse", "low": 181440, "top": 258482}
     ]
 
     building_data = []
     for b in BRACKETS:
         total_in_bracket = min(t4_gross_income, b['top']) - b['low']
         if total_in_bracket <= 0: continue
-        taxed_amt = max(0, min(b['top'], taxable_income_for_chart) - b['low'])
+        taxed_amt = max(0, min(b['top'], taxable_income) - b['low'])
         shielded_amt = total_in_bracket - taxed_amt
-        if shielded_amt > 0: building_data.append({"Floor": b['Floor'], "Amount": shielded_amt, "Status": "Shielded", "Rate": f"{b['rate']*100:.1f}%"})
-        if taxed_amt > 0: building_data.append({"Floor": b['Floor'], "Amount": taxed_amt, "Status": "Taxed", "Rate": f"{b['rate']*100:.1f}%"})
+        if shielded_amt > 0: building_data.append({"Floor": b['Floor'], "Amount": shielded_amt, "Status": "Shielded"})
+        if taxed_amt > 0: building_data.append({"Floor": b['Floor'], "Amount": taxed_amt, "Status": "Taxed"})
 
     if building_data:
         chart = alt.Chart(pd.DataFrame(building_data)).mark_bar().encode(
-            x=alt.X('Floor:N', sort=None), y=alt.Y('Amount:Q', title="Income ($)"),
-            color=alt.Color('Status:N', scale=alt.Scale(domain=['Shielded', 'Taxed'], range=['#3b82f6', '#f59e0b'])),
-            tooltip=['Floor', 'Amount', 'Rate', 'Status']
-        ).properties(height=400)
+            x=alt.X('Floor:N', sort=None), y=alt.Y('Amount:Q'),
+            color=alt.Color('Status:N', scale=alt.Scale(domain=['Shielded', 'Taxed'], range=['#3b82f6', '#f59e0b']))
+        ).properties(height=350)
         st.altair_chart(chart, use_container_width=True)
 
-    # 5. STRATEGY SUMMARY
     st.divider()
     st.subheader("📊 Strategic Prioritization")
-    description_box("**Prioritization Logic:** RRSP contributions are most effective when they offset income in the highest tax brackets (the 'Penthouse'). TFSA is prioritized next for its long-term tax-free growth.")
-    
-    tax_cliff = 181440 
-    summary_df = pd.DataFrame({
-        "Action": ["RRSP (High Value)", "RRSP (Low Value)", "TFSA"],
-        "Current Impact": [
-            f"${max(0, taxable_income_for_chart - tax_cliff):,.0f} still in Penthouse",
-            f"${min(taxable_income_for_chart, tax_cliff):,.0f} in lower floors",
-            f"${max(0, tfsa_room - tfsa_lump_sum):,.0f} available room"
-        ],
-        "Priority": ["1st - Immediate 48% ROI", "3rd - Tax Deferral only", "2nd - Tax-Free Growth"]
-    })
-    st.table(summary_df)
+    description_box("Optimization Guide", "The table below highlights high-efficiency actions. Items in **Orange** represent income being taxed at the highest rates. Aim to increase RRSP until they turn **Green**.")
+
+    penthouse_amt = max(0, taxable_income - tax_cliff)
+    penthouse_color = "background-color: #ffedd5;" if penthouse_amt > 0 else "background-color: #dcfce7;"
+    shield_target = max(0, t4_gross_income - tax_cliff - annual_rrsp_periodic)
+
+    summary_df = pd.DataFrame([
+        {"Action": "RRSP (Penthouse Shield)", "Impact": f"${penthouse_amt:,.0f} Taxed @ 48%", "Requirement": f"Lump Sum Target: ${shield_target:,.0f}" if penthouse_amt > 0 else "✓ Optimized"},
+        {"Action": "TFSA Maximize", "Impact": f"${max(0, tfsa_room - tfsa_lump_sum):,.0f} Room Left", "Requirement": "Tax-Free Growth"},
+        {"Action": "RRSP (Lower Floor)", "Impact": "Income < $181k", "Requirement": "Tax Deferral Only"}
+    ])
+
+    def color_priority(row):
+        if "Penthouse" in row['Action']:
+            return [penthouse_color] * len(row)
+        return [''] * len(row)
+
+    st.table(summary_df.style.apply(color_priority, axis=1))
