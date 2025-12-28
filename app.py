@@ -4,8 +4,7 @@ import altair as alt
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Retirement Architect Pro", layout="wide")
-st.title("🏢 Retirement Architect: Path to Age 55")
-st.markdown("### Strategy: High-Income Optimization (Official 2026 Estimates)")
+st.title("🏢 Retirement Architect: Room & Strategy Tracker")
 
 # --- SIDEBAR: PROFILE & INPUTS ---
 with st.sidebar:
@@ -18,12 +17,12 @@ with st.sidebar:
     employer_match = st.slider("Employer Match (% of Base)", 0.0, 10.0, 4.0)
     lump_sum = st.number_input("March 2nd Lump Sum ($)", value=10000, step=1000)
     
-    st.header("📁 Available Room")
-    rrsp_room = st.number_input("Unused RRSP Room ($)", value=146000)
-    tfsa_room = st.number_input("Unused TFSA Room ($)", value=102000)
+    st.header("📁 Room (Pre-Strategy)")
+    # User inputs their current room as seen on CRA MyAccount
+    initial_rrsp_room = st.number_input("Current Unused RRSP Room ($)", value=146000)
+    initial_tfsa_room = st.number_input("Current Unused TFSA Room ($)", value=102000)
 
-# --- 2026 ONTARIO/FEDERAL TAX DATA ---
-# Includes the Federal drop to 14% and indexed Ontario brackets
+# --- 2026 TAX BRACKETS ---
 BRACKETS = [
     {"Floor": "Floor 1", "low": 0, "top": 53891, "rate": 0.1905},
     {"Floor": "Floor 2", "low": 53891, "top": 58523, "rate": 0.2315},
@@ -34,82 +33,72 @@ BRACKETS = [
 ]
 
 # --- CALCULATIONS ---
+# 1. Periodic contributions (Year-long)
 annual_rrsp_periodic = base_salary * ((biweekly_pct + employer_match) / 100)
-total_rrsp = annual_rrsp_periodic + lump_sum
-taxable_income = gross_income - total_rrsp
-tax_cliff = 181440 # The 48% marginal rate threshold
+# 2. Total RRSP Contributions for the tax year
+total_rrsp_contributions = annual_rrsp_periodic + lump_sum
+# 3. Taxable Income
+taxable_income = gross_income - total_rrsp_contributions
+# 4. Refund calculation (Conservative estimate based on marginal rate)
+est_refund = total_rrsp_contributions * 0.45 
+
+# --- UPDATED ROOM LOGIC ---
+# RRSP Room: Reduced by both periodic and lump sum
+final_rrsp_room = max(0, initial_rrsp_room - total_rrsp_contributions)
+# TFSA Room Strategy: Assume user moves the Refund into TFSA
+final_tfsa_room = max(0, initial_tfsa_room - est_refund)
+
+# --- FEATURE: ROOM TRACKER TABLE ---
+st.header("📊 Room & Strategy Execution")
+room_data = {
+    "Account": ["RRSP Room", "TFSA Room"],
+    "Starting Room": [f"${initial_rrsp_room:,.0f}", f"${initial_tfsa_room:,.0f}"],
+    "Strategy Usage": [f"-${total_rrsp_contributions:,.0f}", f"-${est_refund:,.0f}"],
+    "Post-Strategy Room": [f"${final_rrsp_room:,.0f}", f"${final_tfsa_room:,.0f}"]
+}
+st.table(pd.DataFrame(room_data))
+
+# --- TOTAL CONTRIBUTIONS SUMMARY ---
+c1, c2, c3 = st.columns(3)
+with c1:
+    st.metric("Total RRSP Contributions", f"${total_rrsp_contributions:,.0f}")
+    st.caption("Includes Periodic + Lump Sum")
+with c2:
+    st.metric("Annual Tax Shield", f"${total_rrsp_contributions:,.0f}")
+    st.caption("Income removed from top brackets")
+with c3:
+    st.success(f"Strategy Refund: ${est_refund:,.0f}")
+    st.caption("Target for TFSA injection")
 
 # --- VISUALIZER: SPLIT-BAR TAX BUILDING ---
-st.header("🏛️ The Tax Building (Partial Shielding)")
-st.write(f"Your RRSP has removed **${total_rrsp:,.0f}** from your highest tax floors.")
-
+st.divider()
+st.subheader("🏢 The Tax Building: Visual Impact")
 building_data = []
 for b in BRACKETS:
     total_in_bracket = min(gross_income, b['top']) - b['low']
     if total_in_bracket <= 0: continue
-    
-    # Split logic: Blue is shielded (removed from top-down)
     taxed_amt = max(0, min(b['top'], taxable_income) - b['low'])
     shielded_amt = total_in_bracket - taxed_amt
-    
     if shielded_amt > 0:
-        building_data.append({"Floor": b['Floor'], "Amount": shielded_amt, "Status": "Shielded (Saved)", "Rate": f"{b['rate']*100:.1f}%"})
+        building_data.append({"Floor": b['Floor'], "Amount": shielded_amt, "Status": "Shielded", "Rate": f"{b['rate']*100:.1f}%"})
     if taxed_amt > 0:
-        building_data.append({"Floor": b['Floor'], "Amount": taxed_amt, "Status": "Taxed (Still Paying)", "Rate": f"{b['rate']*100:.1f}%"})
+        building_data.append({"Floor": b['Floor'], "Amount": taxed_amt, "Status": "Taxed", "Rate": f"{b['rate']*100:.1f}%"})
 
-df_building = pd.DataFrame(building_data)
-chart = alt.Chart(df_building).mark_bar().encode(
+chart = alt.Chart(pd.DataFrame(building_data)).mark_bar().encode(
     x=alt.X('Floor:N', sort=None),
     y=alt.Y('Amount:Q', title="Income ($)"),
-    color=alt.Color('Status:N', scale=alt.Scale(domain=['Shielded (Saved)', 'Taxed (Still Paying)'], range=['#3b82f6', '#f59e0b'])),
+    color=alt.Color('Status:N', scale=alt.Scale(domain=['Shielded', 'Taxed'], range=['#3b82f6', '#f59e0b'])),
     tooltip=['Floor', 'Amount', 'Rate', 'Status']
 ).properties(height=400)
 st.altair_chart(chart, use_container_width=True)
 
-# --- FEATURE 1: MARCH 2nd CHECKLIST ---
+# --- BONUS & ACTION ITEMS ---
 st.divider()
-st.header("📅 Action: March 2nd Tax Deadline")
-premium_lump_sum_needed = max(0, (gross_income - annual_rrsp_periodic) - tax_cliff)
-actual_recommendation = min(premium_lump_sum_needed, rrsp_room)
-
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.metric("Income in 'Penthouse'", f"${max(0, taxable_income - tax_cliff):,.0f}")
-    st.caption("Income currently taxed at 48.3%.")
-with col2:
-    st.metric("Recommended Lump Sum", f"${actual_recommendation:,.0f}")
-    st.caption("To clear the 48% tax bracket.")
-with col3:
-    refund = total_rrsp * 0.44 # Average conservative refund rate
-    st.success(f"Est. Total Refund: **${refund:,.0f}**")
-    st.caption("Strategy: Direct this into your TFSA.")
-
-# --- FEATURE 2: BONUS SHIELD & T1213 ---
-st.divider()
-st.subheader("🛡️ Bonus Shield & Cash Flow")
+st.subheader("🛡️ Strategic Action Items")
 bonus_amt = gross_income - base_salary
-tax_on_bonus = bonus_amt * 0.4829
+st.info(f"**Bonus Shield:** If you receive your ${bonus_amt:,.0f} bonus as cash, you lose roughly **${bonus_amt * 0.48:,.0f}** to immediate tax. Execute the direct-to-RRSP transfer to keep the full amount.")
 
-c_a, c_b = st.columns(2)
-with c_a:
-    st.info(f"**Bonus Shield:** Your ${bonus_amt:,.0f} bonus will lose **${tax_on_bonus:,.0f}** to tax if taken as cash. Tell HR to move it directly to your RRSP.")
-with c_b:
-    with st.expander("📝 Data for T1213 (Tax Waiver)"):
-        st.write("Use these to get your refund on every paycheck instead of once a year:")
-        st.write(f"- Annual RRSP Deduction: **${total_rrsp:,.0f}**")
-        st.write(f"- Requested Tax Reduction: ~**${total_rrsp * 0.45:,.0f}**")
-
-# --- FEATURE 3: RETIREMENT BRIDGE (AGE 55) ---
-st.divider()
-st.subheader("🌉 The Age 55 Retirement Bridge")
-st.write("To retire early, you need to survive on **TFSA** funds to avoid 'clawbacks' of government benefits later.")
-
-# Simplified Bridge Visual
-bridge_data = pd.DataFrame({
-    "Asset": ["TFSA (The Bridge)", "RRSP (The Foundation)", "CPP/OAS (Gov)"],
-    "Withdrawal Age": ["55 - 65", "65+", "65+"],
-    "Tax Status": ["Tax-Free", "Taxable", "Taxable"]
-})
-st.table(bridge_df := bridge_data)
-
-st.warning(f"**Strategy Note:** You have ${tfsa_room:,.0f} TFSA room. Prioritize filling this *after* your taxable income drops below ${tax_cliff:,.0f}.")
+with st.expander("📝 March 2nd Checklist"):
+    st.write(f"1. **Confirm Room:** Ensure your total ${total_rrsp_contributions:,.0f} doesn't exceed your NOA limit.")
+    st.write(f"2. **Lump Sum:** Execute the ${lump_sum:,.0f} payment before March 2, 2026.")
+    st.write(f"3. **TFSA Reinvestment:** Once the refund of ~${est_refund:,.0f} arrives, inject it into your TFSA.")
