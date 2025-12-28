@@ -5,18 +5,10 @@ import json
 import os
 import streamlit.components.v1 as components
 
-# --- 1. PERSISTENCE ENGINE ---
-SAVE_FILE = "retirement_data.json"
+# --- 1. MULTI-YEAR PERSISTENCE ENGINE ---
+SAVE_FILE = "retirement_history.json"
 
-def save_to_file(data):
-    try:
-        with open(SAVE_FILE, "w") as f:
-            json.dump(data, f)
-        return True
-    except:
-        return False
-
-def load_from_file():
+def load_all_data():
     if os.path.exists(SAVE_FILE):
         try:
             with open(SAVE_FILE, "r") as f:
@@ -25,7 +17,13 @@ def load_from_file():
             return {}
     return {}
 
-saved_data = load_from_file()
+def save_year_data(year, data):
+    all_data = load_all_data()
+    all_data[str(year)] = data
+    with open(SAVE_FILE, "w") as f:
+        json.dump(all_data, f)
+
+all_history = load_all_data()
 
 # --- 2. CONFIGURATION & CUSTOM STYLING ---
 st.set_page_config(page_title="TAX RRSP/TFSA Planner", layout="wide")
@@ -40,23 +38,14 @@ st.markdown("""
         margin-bottom: 20px;
         color: #1f2937;
     }
-    .desc-box p, .desc-box li {
-        margin-bottom: 5px;
-        font-size: 0.95rem;
-    }
     @media print {
-        div[data-testid="stSidebar"], .stButton, button, header, footer, [data-testid="stToolbar"], .pinned {
+        div[data-testid="stSidebar"], .stButton, button, header, footer, [data-testid="stToolbar"] {
             display: none !important;
         }
         .main .block-container {
             max-width: 100% !important;
             padding: 0 !important;
             margin: 0 !important;
-        }
-        div, table, tr, td, th {
-            page-break-inside: avoid !important;
-            opacity: 1 !important;
-            visibility: visible !important;
         }
     }
     </style>
@@ -65,61 +54,56 @@ st.markdown("""
 def description_box(text):
     st.markdown(f'<div class="desc-box">{text}</div>', unsafe_allow_html=True)
 
-# --- 3. SIDEBAR: INPUTS ---
+# --- 3. SIDEBAR: YEAR SELECTOR & INPUTS ---
 with st.sidebar:
-    st.header("👤 Income Inputs")
-    description_box("""
-    * **Annual T4 Gross:** Your total income for tax bracket calculation.
-    * **Base Salary:** Your fixed salary used for biweekly contribution logic.
-    """)
+    st.header("📅 Planning Year")
+    # Allows you to switch between years. Each year holds its own data.
+    selected_year = st.selectbox("Select Year to Plan/View", 
+                                options=list(range(2024, 2031)), 
+                                index=1) # Defaults to 2025
     
-    t4_gross_income = st.number_input("T4 Gross Income (Total)", value=float(saved_data.get("t4_gross_income", 0)), step=5000.0)
-    base_salary = st.number_input("Annual Base Salary ($)", value=float(saved_data.get("base_salary", 0)), step=5000.0)
+    # Load data specific to the selected year
+    year_data = all_history.get(str(selected_year), {})
+    
+    st.divider()
+    st.header("👤 Income Inputs")
+    description_box(f"Planning for the **{selected_year}** tax year.")
+    
+    t4_gross_income = st.number_input("T4 Gross Income (Total)", value=float(year_data.get("t4_gross_income", 0)), step=5000.0, key=f"t4_{selected_year}")
+    base_salary = st.number_input("Annual Base Salary ($)", value=float(year_data.get("base_salary", 0)), step=5000.0, key=f"base_{selected_year}")
     
     st.header("💰 RRSP Payroll Setup")
-    description_box("""
-    * **Biweekly %:** Your personal contribution from each paycheck.
-    * **Employer Match:** The additional % provided by your company.
-    """)
-    
-    biweekly_pct = st.slider("Biweekly RRSP (%)", 0.0, 18.0, value=float(saved_data.get("biweekly_pct", 0.0)))
-    employer_match = st.slider("Employer Match (%)", 0.0, 10.0, value=float(saved_data.get("employer_match", 0.0)))
+    biweekly_pct = st.slider("Biweekly RRSP (%)", 0.0, 18.0, value=float(year_data.get("biweekly_pct", 0.0)), key=f"bi_{selected_year}")
+    employer_match = st.slider("Employer Match (%)", 0.0, 10.0, value=float(year_data.get("employer_match", 0.0)), key=f"match_{selected_year}")
     
     st.header("📅 Bulk Contributions")
-    description_box("""
-    * **RRSP Lump Sum:** Manual deposit before the March 1st deadline.
-    * **TFSA Lump Sum:** Annual contribution for tax-free growth.
-    """)
-    
-    rrsp_lump_sum = st.number_input("RRSP Lump Sum ($)", value=float(saved_data.get("rrsp_lump_sum", 0)))
-    tfsa_lump_sum = st.number_input("TFSA Lump Sum ($)", value=float(saved_data.get("tfsa_lump_sum", 0)))
+    rrsp_lump_sum = st.number_input("RRSP Lump Sum ($)", value=float(year_data.get("rrsp_lump_sum", 0)), key=f"rrsp_l_{selected_year}")
+    tfsa_lump_sum = st.number_input("TFSA Lump Sum ($)", value=float(year_data.get("tfsa_lump_sum", 0)), key=f"tfsa_l_{selected_year}")
     
     st.header("📁 Room Registry")
-    description_box("""
-    * **Unused Room:** Enter limits from your latest Notice of Assessment.
-    """)
-    
-    rrsp_room = st.number_input("Unused RRSP Room", value=float(saved_data.get("rrsp_room", 0)))
-    tfsa_room = st.number_input("Unused TFSA Room", value=float(saved_data.get("tfsa_room", 0)))
+    rrsp_room = st.number_input("Unused RRSP Room", value=float(year_data.get("rrsp_room", 0)), key=f"rrsp_r_{selected_year}")
+    tfsa_room = st.number_input("Unused TFSA Room", value=float(year_data.get("tfsa_room", 0)), key=f"tfsa_r_{selected_year}")
 
     st.divider()
     
     c_save, c_reset = st.columns(2)
     with c_save:
-        if st.button("💾 Save Inputs"):
+        if st.button(f"💾 Save {selected_year} Strategy"):
             current_state = {
                 "t4_gross_income": t4_gross_income, "base_salary": base_salary,
                 "biweekly_pct": biweekly_pct, "employer_match": employer_match,
                 "rrsp_lump_sum": rrsp_lump_sum, "tfsa_lump_sum": tfsa_lump_sum,
                 "rrsp_room": rrsp_room, "tfsa_room": tfsa_room
             }
-            save_to_file(current_state)
-            st.success("Saved!")
+            save_year_data(selected_year, current_state)
+            st.success(f"Saved {selected_year} data!")
+            st.rerun()
     
     with c_reset:
-        if st.button("🔄 Reset to 0"):
-            if os.path.exists(SAVE_FILE): os.remove(SAVE_FILE)
-            st.session_state.clear()
+        if st.button("🔄 Clear Current Year"):
+            all_history.pop(str(selected_year), None)
+            with open(SAVE_FILE, "w") as f:
+                json.dump(all_history, f)
             st.rerun()
 
 # --- 4. CALCULATIONS ---
@@ -134,24 +118,21 @@ est_refund = total_rrsp_contributions * 0.46
 
 # --- 5. MAIN CONTENT ---
 
-st.title("🏛️ TAX RRSP/TFSA Planner")
+st.title(f"🏛️ TAX RRSP/TFSA Planner: {selected_year}")
 
 st.header("🚀 Quick Start Guide")
-description_box("""
-* **1. Input Data:** Use the sidebar to enter your Income and Room Limits.
-* **2. Review Deadlines:** Check the 'March 1st Deadlines' section for immediate actions.
-* **3. Visualize Savings:** Look at the 'Tax Building' to see how RRSP 'shields' your income.
-* **4. Optimize:** Adjust Lump Sums to eliminate income in the orange 'Taxed' zones.
-* **5. Finalize:** Hit 'Save' to keep data or 'Save as PDF' for your records.
+description_box(f"""
+1. **Input Data:** Use the sidebar to enter your Income, Room Limits for **{selected_year}**.
+2. **Review Deadlines:** Check the 'March 1st Deadlines' section for immediate actions.
+3. **Visualize Savings:** Look at the 'Tax Building' to see how your RRSP 'shields' your income from high tax brackets.
+4. **Optimize:** Adjust your Lump Sums to eliminate income in the orange 'Taxed' zones of the Penthouse floor.
+5. **Finalize:** Hit 'Save' to record your {selected_year} execution strategy.
 """)
 
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
-    st.subheader("📅 March 1st Deadlines")
-    description_box("""
-    * **Priority Actions:** Specific steps to take before the deadline.
-    * **Tax Impact:** Estimated refund based on your total RRSP contribution.
-    """)
+    st.subheader(f"📅 March 1st Deadlines ({selected_year})")
+    description_box("Priority actions to execute before the tax deadline to maximize your return.")
 with col_h2:
     components.html("""
         <button onclick="window.print()" style="
@@ -171,10 +152,7 @@ with ac3:
 
 st.divider()
 st.subheader("🏦 Registration Room Status")
-description_box("""
-* **Room Usage:** Shows how contributions consume your available limits.
-* **Remaining Room:** Your projected room after all actions are completed.
-""")
+description_box("Tracking the depletion of your available tax-advantaged room based on your total planned contributions.")
 room_df = pd.DataFrame({
     "Account": ["RRSP Room", "TFSA Room"],
     "Starting": [f"${rrsp_room:,.0f}", f"${tfsa_room:,.0f}"],
@@ -185,12 +163,7 @@ st.table(room_df)
 
 st.divider()
 st.subheader("🏢 The Tax Building Visualizer")
-description_box("""
-* **Shielded (Blue):** Income removed from taxation via RRSP.
-* **Taxed (Orange):** Remaining income exposed to bracket-specific rates.
-""")
-
-
+description_box("This chart shows your income progression. Shielded (Blue) segments represent income removed from taxation.")
 
 BRACKETS = [
     {"Floor": "Floor 1", "low": 0, "top": 53891, "rate": 0.1905},
@@ -225,10 +198,7 @@ else:
 
 st.divider()
 st.subheader("📊 Strategic Prioritization")
-description_box("""
-* **RRSP High Value:** Focus here first to eliminate high-marginal tax (48%).
-* **TFSA:** Secondary focus for long-term tax-free growth.
-""")
+description_box("An efficiency ranking of your accounts based on marginal ROI.")
 
 summary_df = pd.DataFrame({
     "Action": ["RRSP (High Value)", "RRSP (Low Value)", "TFSA"],
@@ -241,6 +211,22 @@ summary_df = pd.DataFrame({
 })
 st.table(summary_df)
 
-description_box("""
-* **Executive Summary:** Your setup effectively utilizes your marginal tax rate. Ensure deposits clear before March 1st.
-""")
+# --- 6. EXECUTION HISTORY LOG ---
+st.divider()
+st.subheader("📜 Execution History Log")
+description_box("Summary of saved strategies across different years.")
+
+if all_history:
+    history_list = []
+    for yr, data in all_history.items():
+        history_list.append({
+            "Year": yr,
+            "Gross Income": f"${data.get('t4_gross_income', 0):,.0f}",
+            "RRSP Total": f"${(data.get('base_salary', 0) * (data.get('biweekly_pct', 0) + data.get('employer_match', 0)) / 100) + data.get('rrsp_lump_sum', 0):,.0f}",
+            "TFSA Lump Sum": f"${data.get('tfsa_lump_sum', 0):,.0f}"
+        })
+    st.table(pd.DataFrame(history_list).sort_values(by="Year", ascending=False))
+else:
+    st.write("No historical data saved yet.")
+
+description_box(f"**Executive Summary:** Your {selected_year} setup effectively utilizes your marginal tax rate. Ensure deposits clear before March 1st.")
