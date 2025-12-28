@@ -71,7 +71,7 @@ def description_box(title, content):
 # --- 4. PAGE: HOME ---
 if st.session_state.current_page == "Home":
     st.title("🏠 Strategy Dashboard")
-    description_box("System Overview", "Welcome to your multi-year financial command center. Select a year tile to adjust your plan. The charts below automatically aggregate your data to show your tax-shielding progress.")
+    description_box("System Overview", "Welcome to your multi-year financial command center. Select a year tile to manage specific strategies. The charts below aggregate your data to visualize your tax-shielding momentum.")
     
     st.subheader("📅 Planning Years")
     cols = st.columns(4)
@@ -89,6 +89,16 @@ if st.session_state.current_page == "Home":
     if all_history:
         st.divider()
         st.subheader("📈 Strategic Growth Comparison")
+        
+        description_box("Understanding Your Growth Metrics", """
+        **1. Tax Shielding Efficiency (Bar Chart)**
+        * **Gross Income (Grey):** Your total earnings before tax intervention.
+        * **Taxable Income (Blue):** Your footprint after RRSP deductions. The gap represents income protected from the top tax brackets.
+        
+        **2. Capital Accumulation Momentum (Line Chart)**
+        * Tracks the **Total Annual Savings** (RRSP + TFSA). 
+        * A rising line indicates increasing financial discipline and a faster path to tax-free wealth.
+        """)
         
         chart_data = []
         for yr, data in all_history.items():
@@ -127,18 +137,18 @@ else:
             st.rerun()
         
         st.header(f"⚙️ {selected_year} Parameters")
-        t4_gross_income = st.number_input("Annual T4 Gross Income", value=float(year_data.get("t4_gross_income", 0)), step=5000.0)
-        base_salary = st.number_input("Annual Base Salary", value=float(year_data.get("base_salary", 0)), step=5000.0)
+        t4_gross_income = st.number_input("Annual T4 Gross Income", value=float(year_data.get("t4_gross_income", 0)), step=5000.0, help="Your total income from all sources (Box 14 on T4). This is the starting point for tax calculations.")
+        base_salary = st.number_input("Annual Base Salary", value=float(year_data.get("base_salary", 0)), step=5000.0, help="Your core salary used to calculate percentage-based biweekly contributions.")
         
         st.header("💰 Contribution Logic")
-        biweekly_pct = st.slider("Biweekly RRSP (%)", 0.0, 18.0, value=float(year_data.get("biweekly_pct", 0.0)))
-        employer_match = st.slider("Employer Match (%)", 0.0, 10.0, value=float(year_data.get("employer_match", 0.0)))
-        rrsp_lump_sum = st.number_input("RRSP Bulk Deposit", value=float(year_data.get("rrsp_lump_sum", 0)))
-        tfsa_lump_sum = st.number_input("TFSA Bulk Deposit", value=float(year_data.get("tfsa_lump_sum", 0)))
+        biweekly_pct = st.slider("Biweekly RRSP (%)", 0.0, 18.0, value=float(year_data.get("biweekly_pct", 0.0)), help="The percentage of your base salary automatically deducted each pay period for your RRSP.")
+        employer_match = st.slider("Employer Match (%)", 0.0, 10.0, value=float(year_data.get("employer_match", 0.0)), help="The percentage your employer contributes. This consumes RRSP room but is 'free money'.")
+        rrsp_lump_sum = st.number_input("RRSP Bulk Deposit", value=float(year_data.get("rrsp_lump_sum", 0)), help="One-time manual contribution (e.g., made before March 1st) to reduce taxable income.")
+        tfsa_lump_sum = st.number_input("TFSA Bulk Deposit", value=float(year_data.get("tfsa_lump_sum", 0)), help="Manual deposit into your TFSA. This does not reduce taxes now but provides tax-free growth.")
         
         st.header("📁 NOA Limits")
-        rrsp_room = st.number_input("Unused RRSP Room", value=float(year_data.get("rrsp_room", 0)))
-        tfsa_room = st.number_input("Unused TFSA Room", value=float(year_data.get("tfsa_room", 0)))
+        rrsp_room = st.number_input("Unused RRSP Room", value=float(year_data.get("rrsp_room", 0)), help="The total contribution limit found on your latest Notice of Assessment (NOA).")
+        tfsa_room = st.number_input("Unused TFSA Room", value=float(year_data.get("tfsa_room", 0)), help="Your total available TFSA contribution limit from your CRA MyAccount.")
 
         st.divider()
         c_save, c_reset = st.columns(2)
@@ -161,32 +171,23 @@ else:
                 delete_year_data(selected_year)
                 st.rerun()
 
-    # --- MAIN RIGHT PANEL ---
-    st.title(f"🏛️ Execution Strategy: {selected_year}")
-    
-    description_box("Quick Start Checklist", f"""
-    1. **Data Entry:** Enter gross income and contribution % in the sidebar.<br>
-    2. **Verification:** Confirm March 1st bulk deposits are scheduled.<br>
-    3. **Optimization:** Check the 'Penthouse' status in the priority table below.<br>
-    4. **Finalize:** Click Save and export as PDF for your records.
-    """)
-
-    # Calculations
+    # Calculations for use in sections
     annual_rrsp_periodic = base_salary * ((biweekly_pct + employer_match) / 100)
     total_rrsp_contributions = annual_rrsp_periodic + rrsp_lump_sum
     taxable_income = t4_gross_income - total_rrsp_contributions
     tax_cliff = 181440 
 
-    # Action Metrics
-    col_h1, col_h2 = st.columns([3, 1])
-    with col_h1: st.subheader(f"📅 March 1st Deadlines ({selected_year})")
-    with col_h2: components.html('<button onclick="window.print()" style="width: 100%; height: 50px; background-color: #3b82f6; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">📄 Save PDF</button>', height=70)
+    st.title(f"🏛️ Execution Strategy: {selected_year}")
+    
+    # SECTION 1: QUICK START CHECKLIST
+    description_box("Quick Start Checklist", f"""
+    1. **Data Entry:** Enter gross income and contribution details in the sidebar.<br>
+    2. **Verification:** Confirm March 1st bulk deposits are scheduled.<br>
+    3. **Optimization:** Watch the table below; Orange rows mean you are still being taxed at peak rates.<br>
+    4. **Finalize:** Click Save to secure your data.
+    """)
 
-    ac1, ac2, ac3 = st.columns(3)
-    ac1.metric("RRSP Bulk", f"${rrsp_lump_sum:,.0f}")
-    ac2.metric("TFSA Bulk", f"${tfsa_lump_sum:,.0f}")
-    ac3.metric("Est. Refund", f"${total_rrsp_contributions * 0.46:,.0f}")
-
+    # SECTION 2: THE TAX BUILDING VISUALIZER
     st.divider()
     st.subheader("🏢 The Tax Building Visualizer")
     
@@ -216,9 +217,10 @@ else:
         ).properties(height=350)
         st.altair_chart(chart, use_container_width=True)
 
+    # SECTION 3: STRATEGIC PRIORITIZATION
     st.divider()
     st.subheader("📊 Strategic Prioritization")
-    description_box("Optimization Guide", "The table below highlights high-efficiency actions. Items in **Orange** represent income being taxed at the highest rates. Aim to increase RRSP until they turn **Green**.")
+    description_box("Optimization Guide", "The table below highlights efficiency. Items in **Orange** require attention. Once you shield that income with RRSP contributions, they turn **Green**.")
 
     penthouse_amt = max(0, taxable_income - tax_cliff)
     penthouse_color = "background-color: #ffedd5;" if penthouse_amt > 0 else "background-color: #dcfce7;"
@@ -236,3 +238,14 @@ else:
         return [''] * len(row)
 
     st.table(summary_df.style.apply(color_priority, axis=1))
+
+    # SECTION 4: MARCH 1ST DEADLINES
+    st.divider()
+    col_h1, col_h2 = st.columns([3, 1])
+    with col_h1: st.subheader(f"📅 March 1st Deadlines ({selected_year})")
+    with col_h2: components.html('<button onclick="window.print()" style="width: 100%; height: 50px; background-color: #3b82f6; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">📄 Save PDF</button>', height=70)
+
+    ac1, ac2, ac3 = st.columns(3)
+    ac1.metric("RRSP Bulk", f"${rrsp_lump_sum:,.0f}")
+    ac2.metric("TFSA Bulk", f"${tfsa_lump_sum:,.0f}")
+    ac3.metric("Est. Refund", f"${total_rrsp_contributions * 0.46:,.0f}")
