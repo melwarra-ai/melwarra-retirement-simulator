@@ -789,9 +789,10 @@ else:
             0.0,
             float(estimated_refund),
             value=min(float(estimated_refund), float(remaining_tfsa_room)),
-            step=100.0,
-            format="$%.0f"
+            step=100.0
         )
+        
+        st.caption(f"Selected amount: ${refund_to_deploy:,.0f}")
         
         col_deploy1, col_deploy2 = st.columns(2)
         
