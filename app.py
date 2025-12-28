@@ -784,38 +784,41 @@ else:
     with st.expander("🧮 Refund Deployment Calculator", expanded=True):
         st.markdown("**Strategic Question:** How much of your tax refund will you reinvest into your TFSA?")
         
-        refund_to_deploy = st.slider(
-            "Amount to reinvest in TFSA",
-            0.0,
-            float(estimated_refund),
-            value=min(float(estimated_refund), float(remaining_tfsa_room)),
-            step=100.0
-        )
-        
-        st.caption(f"Selected amount: ${refund_to_deploy:,.0f}")
-        
-        col_deploy1, col_deploy2 = st.columns(2)
-        
-        with col_deploy1:
-            st.markdown("**Deployment Impact:**")
-            new_tfsa_total = tfsa_lump_sum + refund_to_deploy
-            new_tfsa_room = max(0, tfsa_room - new_tfsa_total)
+        if estimated_refund > 0:
+            refund_to_deploy = st.slider(
+                "Amount to reinvest in TFSA",
+                0.0,
+                float(estimated_refund),
+                value=min(float(estimated_refund), float(remaining_tfsa_room)),
+                step=100.0
+            )
             
-            st.write(f"- Total TFSA contribution: ${new_tfsa_total:,.0f}")
-            st.write(f"- Remaining TFSA room: ${new_tfsa_room:,.0f}")
-            st.write(f"- Combined tax-advantaged savings: ${total_rrsp_contributions + new_tfsa_total:,.0f}")
-        
-        with col_deploy2:
-            st.markdown("**20-Year Growth Projection:**")
-            # Assuming 7% annual return
-            growth_rate = 0.07
-            years = 20
-            future_value = refund_to_deploy * ((1 + growth_rate) ** years)
-            tax_saved_at_withdrawal = future_value * marginal_rate
+            st.caption(f"Selected amount: ${refund_to_deploy:,.0f}")
             
-            st.write(f"- Refund deployed: ${refund_to_deploy:,.0f}")
-            st.write(f"- Future value @ 7%: ${future_value:,.0f}")
-            st.write(f"- Tax saved (vs. taxable): ${tax_saved_at_withdrawal:,.0f}")
+            col_deploy1, col_deploy2 = st.columns(2)
+            
+            with col_deploy1:
+                st.markdown("**Deployment Impact:**")
+                new_tfsa_total = tfsa_lump_sum + refund_to_deploy
+                new_tfsa_room = max(0, tfsa_room - new_tfsa_total)
+                
+                st.write(f"- Total TFSA contribution: ${new_tfsa_total:,.0f}")
+                st.write(f"- Remaining TFSA room: ${new_tfsa_room:,.0f}")
+                st.write(f"- Combined tax-advantaged savings: ${total_rrsp_contributions + new_tfsa_total:,.0f}")
+            
+            with col_deploy2:
+                st.markdown("**20-Year Growth Projection:**")
+                # Assuming 7% annual return
+                growth_rate = 0.07
+                years = 20
+                future_value = refund_to_deploy * ((1 + growth_rate) ** years)
+                tax_saved_at_withdrawal = future_value * marginal_rate
+                
+                st.write(f"- Refund deployed: ${refund_to_deploy:,.0f}")
+                st.write(f"- Future value @ 7%: ${future_value:,.0f}")
+                st.write(f"- Tax saved (vs. taxable): ${tax_saved_at_withdrawal:,.0f}")
+        else:
+            st.info("💡 Make RRSP contributions to generate a tax refund that can be reinvested into your TFSA for tax-free growth.")
     
     st.divider()
     
