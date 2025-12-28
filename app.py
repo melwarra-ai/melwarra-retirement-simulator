@@ -1,10 +1,11 @@
 import streamlit as st
 import pandas as pd
+import altair as alt
 
 # --- APP CONFIG ---
 st.set_page_config(page_title="Retirement Architect Pro", layout="wide")
 st.title("🏛️ Retirement Architect: Path to Age 55")
-st.markdown("Optimize your income to avoid the 'Penthouse' tax brackets.")
+st.markdown("### Strategy: High-Income Optimization (2026 Estimates)")
 
 # --- SIDEBAR: USER PROFILE ---
 with st.sidebar:
@@ -18,26 +19,25 @@ with st.sidebar:
     rrsp_room = st.number_input("Unused RRSP Room ($)", value=146000)
     tfsa_room = st.number_input("Unused TFSA Room ($)", value=102000)
 
-# --- OFFICIAL 2026 COMBINED ON/FED TAX RATES ---
-# Using the 14% Federal base + Indexed Ontario thresholds
+# --- 2026 ONTARIO/FEDERAL COMBINED TAX BRACKETS ---
 BRACKETS = [
-    {"name": "Floor 1", "top": 53891, "rate": 0.1905},
-    {"name": "Floor 2", "top": 58523, "rate": 0.2315},
-    {"name": "Floor 3", "top": 94907, "rate": 0.2965},
-    {"name": "Floor 4", "top": 117045, "rate": 0.3148},
-    {"name": "Floor 5", "top": 181440, "rate": 0.4497}, # The Efficiency Cliff
-    {"name": "Penthouse", "top": 258482, "rate": 0.4829},
-    {"name": "Skyline", "top": 1000000, "rate": 0.5353}
+    {"Floor": "Floor 1", "top": 53891, "rate": 0.1905},
+    {"Floor": "Floor 2", "top": 58523, "rate": 0.2315},
+    {"Floor": "Floor 3", "top": 94907, "rate": 0.2965},
+    {"Floor": "Floor 4", "top": 117045, "rate": 0.3148},
+    {"Floor": "Floor 5", "top": 181440, "rate": 0.4497}, 
+    {"Floor": "Penthouse", "top": 258482, "rate": 0.4829},
+    {"Floor": "Skyline", "top": 1000000, "rate": 0.5353}
 ]
 
 # --- CALCULATIONS ---
 annual_rrsp_periodic = base_salary * ((biweekly_pct + employer_match) / 100)
 taxable_income = gross_income - annual_rrsp_periodic
-tax_cliff = 181440 # Income above this is taxed at 48.3%+
+tax_cliff = 181440 # Everything above this is taxed at ~48%+
 
-# --- FEATURE 1: COLOR-CODED TAX BUILDING ---
+# --- FEATURE 1: DYNAMIC TAX BUILDING (ALTAIR) ---
 st.header("🏢 The Tax Building Visualizer")
-st.write("Each bar is a tax bracket. **Blue** is income you've successfully shielded. **Green** is income still being taxed.")
+st.write("Blue segments are income **shielded** by RRSP. Orange segments are **taxed**.")
 
 building_data = []
 prev_top = 0
@@ -45,27 +45,33 @@ for b in BRACKETS:
     slice_amt = min(gross_income, b['top']) - prev_top
     if slice_amt <= 0: break
     
-    # Shielding Logic: Income is reduced from the top floor down
-    # If the bottom of this slice is above our taxable income, it's shielded
+    # Shielding Logic
     is_shielded = (prev_top >= taxable_income)
-    status = "Shielded (0% Tax)" if is_shielded else f"Taxed at {b['rate']*100:.1f}%"
+    status = "Shielded" if is_shielded else "Taxed"
     
-    building_data.append({"Floor": b['name'], "Amount": slice_amt, "Status": status})
+    building_data.append({
+        "Floor": b['Floor'], 
+        "Amount": slice_amt, 
+        "Status": status,
+        "Rate": f"{b['rate']*100:.1f}%"
+    })
     prev_top = b['top']
 
 df_building = pd.DataFrame(building_data)
-st.bar_chart(
-    df_building, 
-    x="Floor", 
-    y="Amount", 
-    color="Status", 
-    # Hardcoded color mapping for reliability
-    color_map={"Shielded (0% Tax)": "#3b82f6"} 
-)
+
+# Create the Altair Chart for perfect color control
+chart = alt.Chart(df_building).mark_bar().encode(
+    x=alt.X('Floor:N', sort=None),
+    y='Amount:Q',
+    color=alt.Color('Status:N', scale=alt.Scale(domain=['Shielded', 'Taxed'], range=['#3b82f6', '#f59e0b'])),
+    tooltip=['Floor', 'Amount', 'Rate', 'Status']
+).properties(height=400)
+
+st.altair_chart(chart, use_container_width=True)
 
 # --- FEATURE 2: MARCH 2nd DEADLINE TOOLKIT ---
 st.divider()
-st.header("📅 Tax Deadline: March 2nd")
+st.header("📅 Tax Season Action: March 2nd")
 premium_lump_sum = max(0, taxable_income - tax_cliff)
 actual_lump = min(premium_lump_sum, rrsp_room)
 tax_refund = actual_lump * 0.4829
@@ -73,30 +79,33 @@ tax_refund = actual_lump * 0.4829
 c1, c2, c3 = st.columns(3)
 with c1:
     st.metric("Income in 'Penthouse'", f"${premium_lump_sum:,.0f}")
-    st.caption("Taxed at 48.3%—Your target for reduction.")
+    st.caption("Taxed at 48.3%—Primary target for RRSP.")
 with c2:
-    st.metric("Recommended Lump Sum", f"${actual_lump:,.0f}")
-    st.caption("Contribute this to maximize efficiency.")
+    st.metric("Lump Sum Target", f"${actual_lump:,.0f}")
+    st.caption("Contribute this by March 2 to maximize ROI.")
 with c3:
-    st.success(f"Est. Tax Refund: ${tax_refund:,.0f}")
-    st.caption("Strategy: Move this refund directly to TFSA.")
+    st.success(f"Est. Refund: ${tax_refund:,.0f}")
+    st.caption("Reinvest this refund into your TFSA.")
 
-# --- FEATURE 3: THE RETIREMENT BRIDGE (AGE 55) ---
+# --- FEATURE 3: RETIREMENT BRIDGE & STRATEGY ---
 st.divider()
-st.subheader("🌉 The Retirement Bridge Strategy")
-st.write("To retire at 55, you need to live off **TFSA (Tax-Free)** until age 65 to avoid the OAS Clawback.")
+st.subheader("🌉 Retirement Bridge & Bonus Strategy")
 
-# Simple visualization of retirement income sources
-bridge_data = pd.DataFrame({
-    "Source": ["TFSA (Tax-Free Bridge)", "RRSP (Taxable Floor)", "OAS/CPP (Government)"],
-    "Role": ["Age 55 to 65", "Age 65+", "Age 65+"],
-    "Priority": [100, 70, 40]
+# Bonus Shield Strategy
+bonus_amt = gross_income - base_salary
+tax_on_bonus = bonus_amt * 0.4829
+
+col_a, col_b = st.columns(2)
+with col_a:
+    st.info(f"**Bonus Shield:** Your ${bonus_amt:,.0f} bonus/commissions will lose **${tax_on_bonus:,.0f}** to tax if taken as cash. Use a direct RRSP transfer to keep 100% of it.")
+with col_b:
+    st.warning(f"**TFSA Pivot:** You have ${tfsa_room:,.0f} room. Use your RRSP refunds to fill this. This provides the tax-free 'bridge' you need to retire at 55.")
+
+# Summary Table
+st.write("### Retirement Strategy Summary")
+summary_df = pd.DataFrame({
+    "Action": ["RRSP (High Value)", "RRSP (Low Value)", "TFSA"],
+    "Income Target": [f"Above ${tax_cliff:,.0f}", f"Below ${tax_cliff:,.0f}", "Anywhere"],
+    "Priority": ["1st - Immediate 48% ROI", "3rd - Tax Deferral only", "2nd - Tax-Free Growth"]
 })
-st.bar_chart(bridge_data, x="Source", y="Priority", color="Role")
-
-st.info(f"""
-**Strategic Roadmap:**
-1. **Bonus Shield:** Your $20k bonus is currently taxed at ~48%. Use the **T1213 Form** to transfer it directly to RRSP tax-free.
-2. **The RRSP Floor:** Stop RRSP contributions once taxable income hits **${tax_cliff:,.0f}**.
-3. **TFSA Pivot:** Any savings beyond the floor should go to TFSA to build your 'Age 55 Bridge'.
-""")
+st.table(summary_df)
