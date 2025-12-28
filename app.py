@@ -5,24 +5,34 @@ import altair as alt
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Retirement Architect Pro", layout="wide")
 st.title("🏛️ Retirement Architect: Path to Age 55")
-st.markdown("### Strategy: High-Income Optimization (2026 Estimates)")
 
 # --- SIDEBAR: USER PROFILE ---
 with st.sidebar:
     st.header("👤 Income & Goals")
-    base_salary = st.number_input("Annual Base Salary ($)", value=180000, step=5000)
-    bonus_pct = st.slider("Target Bonus (%)", 0, 50, 15)
     
-    # Calculation for Bonus and Gross
+    # NEW: Manual T4 Gross Entry (Excluding base/bonus)
+    t4_gross_other = st.number_input(
+        "T4 Gross Income (Other)", 
+        value=0, 
+        help="Enter any additional taxable income NOT including base salary or bonus.",
+        key="t4_gross_other"
+    )
+    
+    base_salary = st.number_input("Annual Base Salary ($)", value=180000, step=5000, key="base_salary")
+    bonus_pct = st.slider("Target Bonus (%)", 0, 50, 15, key="bonus_pct")
+    
+    # Calculations
     bonus_amt = base_salary * (bonus_pct / 100)
-    gross_income = base_salary + bonus_amt
-    st.write(f"**Total Gross (Est):** ${gross_income:,.0f}")
+    # Total Gross is the sum of all three distinct parts
+    gross_income = base_salary + bonus_amt + t4_gross_other
+    
+    st.info(f"**Total Calculated Gross:** ${gross_income:,.0f}")
     
     st.header("💰 RRSP & TFSA")
-    biweekly_pct = st.slider("Biweekly Contribution (% of Base)", 0.0, 18.0, 6.0)
-    employer_match = st.slider("Employer Match (% of Base)", 0.0, 10.0, 4.0)
-    rrsp_room = st.number_input("Unused RRSP Room ($)", value=146000)
-    tfsa_room = st.number_input("Unused TFSA Room ($)", value=102000)
+    biweekly_pct = st.slider("Biweekly Contribution (%)", 0.0, 18.0, 6.0, key="biweekly_pct")
+    employer_match = st.slider("Employer Match (%)", 0.0, 10.0, 4.0, key="employer_match")
+    rrsp_room = st.number_input("Unused RRSP Room ($)", value=146000, key="rrsp_room")
+    tfsa_room = st.number_input("Unused TFSA Room ($)", value=102000, key="tfsa_room")
 
 # --- 2026 ONTARIO/FEDERAL COMBINED TAX BRACKETS ---
 BRACKETS = [
@@ -37,18 +47,14 @@ BRACKETS = [
 # --- CALCULATIONS ---
 annual_rrsp_periodic = base_salary * ((biweekly_pct + employer_match) / 100)
 taxable_income = gross_income - annual_rrsp_periodic
-tax_cliff = 181440 # Everything above this is taxed at ~48%+
+tax_cliff = 181440 
 
-# --- FEATURE 1: DYNAMIC TAX BUILDING (ALTAIR) ---
+# --- VISUALIZER ---
 st.header("🏢 The Tax Building Visualizer")
-st.write("Blue segments are income **shielded** by RRSP. Orange segments are **taxed**.")
-
 building_data = []
 for b in BRACKETS:
     total_in_bracket = min(gross_income, b['top']) - b['low']
     if total_in_bracket <= 0: continue
-    
-    # Split logic: Blue is shielded (removed from top-down)
     taxed_amt = max(0, min(b['top'], taxable_income) - b['low'])
     shielded_amt = total_in_bracket - taxed_amt
     
@@ -63,47 +69,22 @@ chart = alt.Chart(pd.DataFrame(building_data)).mark_bar().encode(
     color=alt.Color('Status:N', scale=alt.Scale(domain=['Shielded', 'Taxed'], range=['#3b82f6', '#f59e0b'])),
     tooltip=['Floor', 'Amount', 'Rate', 'Status']
 ).properties(height=400)
-
 st.altair_chart(chart, use_container_width=True)
 
-# --- FEATURE 2: MARCH 2nd DEADLINE TOOLKIT ---
+# --- UPDATED STRATEGY TABLE ---
 st.divider()
-st.header("📅 Tax Season Action: March 2nd")
-premium_lump_sum = max(0, taxable_income - tax_cliff)
-actual_lump = min(premium_lump_sum, rrsp_room)
-tax_refund = actual_lump * 0.4829
-
-c1, c2, c3 = st.columns(3)
-with c1:
-    st.metric("Income in 'Penthouse'", f"${premium_lump_sum:,.0f}")
-    st.caption("Taxed at 48.3%—Primary target for RRSP.")
-with c2:
-    st.metric("Lump Sum Target", f"${actual_lump:,.0f}")
-    st.caption("Contribute this by March 2 to maximize ROI.")
-with c3:
-    st.success(f"Est. Refund: ${tax_refund:,.0f}")
-    st.caption("Reinvest this refund into your TFSA.")
-
-# --- FEATURE 3: RETIREMENT BRIDGE & STRATEGY ---
-st.divider()
-st.subheader("🛡️ Bonus Shield & Retirement Bridge")
-
-tax_on_bonus = bonus_amt * 0.4829
-
-col_a, col_b = st.columns(2)
-with col_a:
-    st.info(f"**Bonus Shield:** Your ${bonus_amt:,.0f} bonus will lose **${tax_on_bonus:,.0f}** to tax if taken as cash. Use a direct RRSP transfer to keep 100% of it.")
-    with st.expander("📝 Data for T1213 (Tax Waiver)"):
-        st.write(f"- Annual RRSP Deduction: **${annual_rrsp_periodic + actual_lump:,.0f}**")
-        st.write(f"- Requested Tax Reduction: ~**${(annual_rrsp_periodic + actual_lump) * 0.45:,.0f}**")
-with col_b:
-    st.warning(f"**TFSA Pivot:** You have ${tfsa_room:,.0f} room. Use your RRSP refunds to fill this. This provides the tax-free 'bridge' you need to retire at 55.")
-
-# Summary Table
-st.write("### Retirement Strategy Summary")
+st.subheader("📊 Retirement Strategy Summary")
 summary_df = pd.DataFrame({
     "Action": ["RRSP (High Value)", "RRSP (Low Value)", "TFSA"],
-    "Income Target": [f"Above ${tax_cliff:,.0f}", f"Below ${tax_cliff:,.0f}", "Anywhere"],
+    "Current Impact": [
+        f"${max(0, taxable_income - tax_cliff):,.0f} remaining in Penthouse",
+        f"${min(taxable_income, tax_cliff):,.0f} in lower floors",
+        f"${tfsa_room:,.0f} available room"
+    ],
     "Priority": ["1st - Immediate 48% ROI", "3rd - Tax Deferral only", "2nd - Tax-Free Growth"]
 })
 st.table(summary_df)
+
+# --- ACTION ITEMS ---
+tax_on_bonus = bonus_amt * 0.4829
+st.info(f"**Bonus Shield:** Your ${bonus_amt:,.0f} bonus is taxed at 48.3%. Shielding it saves you **${tax_on_bonus:,.0f}**.")
