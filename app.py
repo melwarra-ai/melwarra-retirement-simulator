@@ -65,20 +65,8 @@ def description_box(title, content):
 # --- 4. PAGE: HOME ---
 if st.session_state.current_page == "Home":
     st.title("🏠 Strategy Dashboard")
+    description_box("System Overview", "Welcome to your multi-year financial command center. Select a year tile to manage specific strategies. The dashboard below tracks your aggregate progress across multiple tax years.")
     
-    # CALCULATE LIFETIME SAVINGS
-    total_lifetime_refunds = 0
-    if all_history:
-        for yr, data in all_history.items():
-            annual_rrsp = (data.get('base_salary', 0) * (data.get('biweekly_pct', 0) + data.get('employer_match', 0)) / 100) + data.get('rrsp_lump_sum', 0)
-            total_lifetime_refunds += (annual_rrsp * 0.46) # Estimated average refund rate
-
-    c_top1, c_top2 = st.columns([2, 1])
-    with c_top1:
-        description_box("System Overview", "Welcome to your multi-year financial command center. Select a year tile to manage specific strategies. The dashboard below tracks your aggregate progress across multiple tax years.")
-    with c_top2:
-        st.metric("Total Tax Dollars Reclaimed", f"${total_lifetime_refunds:,.0f}", help="Sum of estimated tax refunds across all saved years.")
-
     st.subheader("📅 Planning Years")
     cols = st.columns(4)
     years_to_show = list(range(2024, 2030))
@@ -95,16 +83,19 @@ if st.session_state.current_page == "Home":
         st.divider()
         st.subheader("📈 Strategic Growth Comparison")
         
+        # --- DETAILED EXPLANATION SECTION ---
         description_box("Understanding Your Strategic Growth", """
-        This section provides a visual audit of your wealth-building efficiency over time. 
+        This section provides a visual audit of your wealth-building efficiency over time. It is designed to track two critical pillars of financial health:
         
         **1. Tax Shielding Efficiency (Bar Chart)**
-        * **Gross Income (Grey):** Your total earnings before intervention.
-        * **Taxable Income (Blue):** Your income after RRSP deductions. The gap represents money you earned but successfully 'shielded' from current taxation.
+        * **Gross Income (Grey):** This represents your total earnings before any intervention. It is the 'target' the government uses to calculate your taxes.
+        * **Taxable Income (Blue):** This is the outcome of your strategy. By using RRSP contributions, you 'shield' a portion of your income, effectively moving the blue line down. The gap between Grey and Blue represents income you earned that you *do not* pay taxes on today.
+        * **Goal:** Maintain a significant gap between the bars, especially during your highest-earning years.
         
         **2. Capital Accumulation Momentum (Line Chart)**
-        * Tracks your **Total Annual Savings** (RRSP + TFSA).
-        * A rising line indicates growing financial discipline or increasing contribution capacity.
+        * This tracks the **Total Annual Savings** (RRSP + TFSA) you have committed to your future. 
+        * Unlike simple savings, this represents 'Tax-Advantaged' capital. A rising line indicates that your capacity to save is increasing, or you are becoming more disciplined in capturing surplus income before it is lost to tax or lifestyle inflation.
+        * **Goal:** A consistent upward trend indicates compounding growth potential.
         """)
 
         # Prepare Data
@@ -134,7 +125,7 @@ if st.session_state.current_page == "Home":
             ).properties(height=350)
             st.altair_chart(savings_chart, use_container_width=True)
 
-# --- 5. PAGE: YEAR VIEW ---
+# --- 5. PAGE: YEAR VIEW (UNCHANGED LOGIC) ---
 else:
     selected_year = st.session_state.selected_year
     year_data = all_history.get(str(selected_year), {})
@@ -167,6 +158,7 @@ else:
             st.rerun()
 
     st.title(f"🏛️ Execution Strategy: {selected_year}")
+    description_box("Strategy Summary", f"Detailed breakdown for {selected_year}. Adjust the sidebar to see real-time tax changes.")
     
     annual_rrsp_periodic = base_salary * ((biweekly_pct + employer_match) / 100)
     total_rrsp_contributions = annual_rrsp_periodic + rrsp_lump_sum
