@@ -27,11 +27,20 @@ def load_from_file():
 
 saved_data = load_from_file()
 
-# --- 2. CONFIGURATION & PDF PRINT STYLING ---
+# --- 2. CONFIGURATION & CUSTOM STYLING ---
 st.set_page_config(page_title="Retirement Architect Pro", layout="wide")
 
+# Custom CSS for Background Colors behind descriptions
 st.markdown("""
     <style>
+    .desc-box {
+        background-color: #f0f2f6; 
+        padding: 15px; 
+        border-radius: 10px; 
+        border-left: 5px solid #3b82f6;
+        margin-bottom: 20px;
+        color: #1f2937;
+    }
     @media print {
         div[data-testid="stSidebar"], .stButton, button, header, footer, [data-testid="stToolbar"] {
             display: none !important;
@@ -45,16 +54,16 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+def description_box(text):
+    st.markdown(f'<div class="desc-box">{text}</div>', unsafe_allow_html=True)
+
 st.title("🏛️ Retirement Architect: Master Strategy Pro")
-st.markdown("""
-Welcome to your high-performance retirement planning suite. This tool helps you visualize how your 
-contributions lower your tax bill and helps you track your available room for the upcoming tax deadline.
-""")
+description_box("Welcome to your high-performance retirement planning suite. This tool helps you visualize how your contributions lower your tax bill and helps you track your available room for the upcoming tax deadline.")
 
 # --- 3. SIDEBAR: INPUTS ---
 with st.sidebar:
     st.header("👤 Income Inputs")
-    st.write("Configure your total earnings to establish your baseline tax exposure.")
+    description_box("Configure your total earnings to establish your baseline tax exposure.")
     
     t4_gross_income = st.number_input(
         "T4 Gross Income (Total)", 
@@ -73,19 +82,19 @@ with st.sidebar:
     )
     
     st.header("💰 RRSP Payroll Setup")
-    st.write("Define the automatic contributions taken directly from your paycheck.")
+    description_box("Define the automatic contributions taken directly from your paycheck.")
     
     biweekly_pct = st.slider("Biweekly RRSP (%)", 0.0, 18.0, value=float(saved_data.get("biweekly_pct", 0.0)), key="biweekly_pct")
     employer_match = st.slider("Employer Match (%)", 0.0, 10.0, value=float(saved_data.get("employer_match", 0.0)), key="employer_match")
     
     st.header("📅 Bulk Contributions")
-    st.write("Manual deposits planned for the immediate tax season.")
+    description_box("Manual deposits planned for the immediate tax season.")
     
     rrsp_lump_sum = st.number_input("RRSP Lump Sum ($)", value=float(saved_data.get("rrsp_lump_sum", 0)), key="rrsp_lump_sum")
     tfsa_lump_sum = st.number_input("TFSA Lump Sum ($)", value=float(saved_data.get("tfsa_lump_sum", 0)), key="tfsa_lump_sum")
     
     st.header("📁 Room Registry")
-    st.write("Enter your remaining contribution limits from your CRA Notice of Assessment.")
+    description_box("Enter your remaining contribution limits from your CRA Notice of Assessment.")
     
     rrsp_room = st.number_input("Unused RRSP Room", value=float(saved_data.get("rrsp_room", 0)), key="rrsp_room")
     tfsa_room = st.number_input("Unused TFSA Room", value=float(saved_data.get("tfsa_room", 0)), key="tfsa_room")
@@ -125,7 +134,7 @@ est_refund = total_rrsp_contributions * 0.46
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
     st.header("📋 Retirement Strategy Report")
-    st.write("A summary of your planned actions and their projected impact on your tax return.")
+    description_box("A summary of your planned actions and their projected impact on your tax return.")
 with col_h2:
     components.html("""
         <button onclick="window.print()" style="
@@ -138,7 +147,7 @@ with col_h2:
 # --- 6. ROOM TRACKER ---
 st.divider()
 st.subheader("🏦 Registration Room Status")
-st.write("This table tracks how your bulk and periodic contributions consume your available registered room.")
+description_box("This table tracks how your bulk and periodic contributions consume your available registered room.")
 room_df = pd.DataFrame({
     "Account": ["RRSP Room", "TFSA Room"],
     "Starting": [f"${rrsp_room:,.0f}", f"${tfsa_room:,.0f}"],
@@ -150,7 +159,7 @@ st.table(room_df)
 # --- 7. ACTION PLAN ---
 st.divider()
 st.subheader("📅 March 1st Deadlines")
-st.write("Key targets for the current tax season to ensure maximum tax recovery.")
+description_box("Key targets for the current tax season to ensure maximum tax recovery.")
 ac1, ac2, ac3 = st.columns(3)
 with ac1:
     st.metric("RRSP Bulk Deposit", f"${rrsp_lump_sum:,.0f}")
@@ -165,7 +174,7 @@ with ac3:
 # --- 8. THE TAX BUILDING ---
 st.divider()
 st.subheader("🏢 The Tax Building Visualizer")
-st.write("Each floor represents a Canadian tax bracket. **Shielded (Blue)** segments are income removed from taxation via RRSP.")
+description_box("Each floor represents a Canadian tax bracket. Shielded (Blue) segments are income removed from taxation via RRSP.")
 
 BRACKETS = [
     {"Floor": "Floor 1", "low": 0, "top": 53891, "rate": 0.1905},
@@ -201,7 +210,7 @@ else:
 # --- 9. STRATEGY SUMMARY TABLE ---
 st.divider()
 st.subheader("📊 Retirement Strategy Summary")
-st.write("A prioritized view of where your next dollar should go for maximum efficiency.")
+description_box("A prioritized view of where your next dollar should go for maximum efficiency.")
 
 summary_df = pd.DataFrame({
     "Action": ["RRSP (High Value)", "RRSP (Low Value)", "TFSA"],
@@ -213,3 +222,5 @@ summary_df = pd.DataFrame({
     "Priority": ["1st - Immediate 48% ROI", "3rd - Tax Deferral only", "2nd - Tax-Free Growth"]
 })
 st.table(summary_df)
+
+description_box("**Executive Summary:** Your current plan focuses on shielding high-marginal-rate income. Ensure the RRSP Lump Sum is deposited before the deadline to lock in the estimated refund.")
