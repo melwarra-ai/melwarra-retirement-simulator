@@ -5,18 +5,20 @@ import json
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Retirement Architect Pro", layout="wide")
-st.title("🏢 Retirement Architect: Strategic Shield & Save")
+st.title("🏛️ Retirement Architect: Ultimate Strategy Pro")
+st.markdown("### Strategy: High-Income Shielding & Early Retirement (2026)")
 
 # --- SIDEBAR: PROFILE & INPUTS ---
 with st.sidebar:
     st.header("👤 Income Profile")
     base_salary = st.number_input("Annual Base Salary ($)", value=180000, step=5000)
-    bonus_pct = st.slider("Target Bonus (%)", 0, 50, 15)
+    bonus_pct = st.slider("Bonus Target (%)", 0, 50, 15)
     
-    # Calculation for Bonus dollars
+    # Calculate Bonus and Gross
     bonus_amt = base_salary * (bonus_pct / 100)
     gross_income = base_salary + bonus_amt
-    st.write(f"**Total Gross (Calculated):** ${gross_income:,.0f}")
+    st.write(f"**Calculated Bonus:** ${bonus_amt:,.0f}")
+    st.write(f"**Total Gross Income:** ${gross_income:,.0f}")
     
     st.header("💰 RRSP Contributions")
     biweekly_pct = st.slider("Biweekly Contribution (% of Base)", 0.0, 18.0, 6.0)
@@ -38,34 +40,35 @@ BRACKETS = [
 ]
 
 # --- CALCULATIONS ---
+# 1. Total RRSP Contributions
 annual_rrsp_periodic = base_salary * ((biweekly_pct + employer_match) / 100)
 total_rrsp_contributions = annual_rrsp_periodic + lump_sum
 taxable_income = gross_income - total_rrsp_contributions
 tax_cliff = 181440 
 
-# Room impact
+# 2. Room Impact
 final_rrsp_room = max(0, initial_rrsp_room - total_rrsp_contributions)
-est_refund = total_rrsp_contributions * 0.46 # Marginal rate average
+est_refund = total_rrsp_contributions * 0.46 
 final_tfsa_room = max(0, initial_tfsa_room - est_refund)
 
 # --- SAVE STRATEGY FUNCTION ---
-strategy_data = {
+strategy_export = {
     "Base Salary": base_salary,
-    "Bonus Amount": bonus_amt,
-    "Total RRSP Shield": total_rrsp_contributions,
-    "Remaining RRSP Room": final_rrsp_room,
-    "Target TFSA Injection": est_refund
+    "Bonus %": bonus_pct,
+    "Bonus Dollars": bonus_amt,
+    "Total RRSP Contributions": total_rrsp_contributions,
+    "Est Refund": est_refund,
+    "Remaining RRSP Room": final_rrsp_room
 }
-json_string = json.dumps(strategy_data, indent=4)
 
-# --- LAYOUT: SUMMARY & SAVE ---
-col_head1, col_head2 = st.columns([3, 1])
-with col_head1:
+# --- HEADER: ROOM TRACKER & SAVE ---
+col_h1, col_h2 = st.columns([3, 1])
+with col_h1:
     st.header("📊 Room & Strategy Execution")
-with col_head2:
+with col_h2:
     st.download_button(
         label="💾 Save Strategy (JSON)",
-        data=json_string,
+        data=json.dumps(strategy_export, indent=4),
         file_name="retirement_strategy.json",
         mime="application/json"
     )
@@ -78,7 +81,9 @@ room_df = pd.DataFrame({
 })
 st.table(room_df)
 
-# --- VISUALIZER ---
+st.metric("Total RRSP Contributions", f"${total_rrsp_contributions:,.0f}")
+
+# --- VISUALIZER: SPLIT-BAR TAX BUILDING ---
 st.divider()
 st.subheader("🏢 The Tax Building (Visual Impact)")
 building_data = []
@@ -105,11 +110,23 @@ st.divider()
 st.header("🛡️ Strategic Action Items")
 tax_saved_on_bonus = bonus_amt * 0.4829
 
-# Fix wording as requested
 st.warning(f"**Bonus Shield:** If you receive your **${bonus_amt:,.0f}** bonus as cash, you lose roughly **${tax_saved_on_bonus:,.0f}** to immediate tax. Execute the direct-to-RRSP transfer to keep the full amount.")
 
 c1, c2 = st.columns(2)
 with c1:
-    st.info(f"**Total RRSP Impact:** Your total contribution of **${total_rrsp_contributions:,.0f}** is the primary driver of your early retirement bridge.")
+    with st.expander("📝 March 2nd Checklist"):
+        st.write(f"1. **Confirm Room:** Ensure your ${total_rrsp_contributions:,.0f} total is within limits.")
+        st.write(f"2. **Lump Sum:** Submit ${lump_sum:,.0f} before March 2, 2026.")
+        st.write(f"3. **T1213 Form:** Use total RRSP ${total_rrsp_contributions:,.0f} to reduce source tax.")
 with c2:
-    st.success(f"**TFSA Pivot:** Once your refund of **${est_refund:,.0f}** arrives, prioritize filling your remaining **${final_tfsa_room:,.0f}** of TFSA room.")
+    st.success(f"**TFSA Pivot:** Your refund of **${est_refund:,.0f}** should fill your TFSA to provide the tax-free 'bridge' needed for retirement at age 55.")
+
+# --- RETIREMENT BRIDGE ---
+st.divider()
+st.subheader("🌉 The Age 55 Retirement Bridge")
+bridge_df = pd.DataFrame({
+    "Asset": ["TFSA (The Bridge)", "RRSP (The Foundation)", "CPP/OAS (Gov)"],
+    "Role": ["Live on this Age 55-65", "Primary Income Age 65+", "Supporting Income Age 65+"],
+    "Tax Status": ["Tax-Free", "Taxable", "Taxable"]
+})
+st.table(bridge_df)
