@@ -13,7 +13,7 @@ def save_to_file(data):
         with open(SAVE_FILE, "w") as f:
             json.dump(data, f)
         return True
-    except Exception as e:
+    except:
         return False
 
 def load_from_file():
@@ -27,51 +27,40 @@ def load_from_file():
 
 saved_data = load_from_file()
 
-# --- 2. CONFIGURATION & CSS ---
+# --- 2. CONFIGURATION & PDF PRINT STYLING ---
 st.set_page_config(page_title="Retirement Architect Pro", layout="wide")
 
-# FIX 2: REFINED PRINT CSS
-# Ensures charts and tables are visible while hiding only the sidebar/buttons
+# CSS to ensure the PDF report shows everything but hides the interactive UI
 st.markdown("""
     <style>
     @media print {
-        /* Hide sidebar, buttons, headers, and file uploaders */
-        [data-testid="stSidebar"], 
-        .stButton, 
-        button, 
-        header, 
-        footer, 
-        [data-testid="stToolbar"] {
+        div[data-testid="stSidebar"], .stButton, button, header, footer, [data-testid="stToolbar"] {
             display: none !important;
         }
-        /* Force main container to be full width and visible */
         .main .block-container {
             max-width: 100% !important;
-            padding: 1rem !important;
+            padding: 0 !important;
             margin: 0 !important;
         }
-        /* Ensure charts render correctly */
-        canvas, svg {
-            max-width: 100% !important;
-            height: auto !important;
+        h1, h2, h3, p, span, div {
+            color: black !important;
         }
     }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("🏛️ Retirement Architect: Master Strategy Pro")
-st.markdown("Use this tool to simulate tax-shielding strategies, track your contribution room, and optimize your retirement plan.")
+st.write("This tool generates a comprehensive retirement strategy based on your T4 income and savings targets.")
 
 # --- 3. SIDEBAR: INPUTS ---
 with st.sidebar:
     st.header("👤 Income Inputs")
-    st.write("Enter your income details to calculate your tax bracket exposure.")
+    st.info("Input your T4 details. These numbers are used to calculate your 'Tax Building' height.")
     
     t4_gross_income = st.number_input(
         "T4 Gross Income (Total)", 
         value=saved_data.get("t4_gross_income", 235000), 
         step=5000,
-        help="Total T4 gross (Box 14). Used for visualizer only.",
         key="t4_gross_income"
     )
     
@@ -79,43 +68,22 @@ with st.sidebar:
         "Annual Base Salary ($)", 
         value=saved_data.get("base_salary", 180000), 
         step=5000, 
-        help="Used strictly for biweekly calcs.",
         key="base_salary"
     )
     
-    st.header("💰 Periodic Contributions (RRSP Only)")
-    st.write("Configure your automatic payroll deductions.")
+    st.header("💰 RRSP Payroll Setup")
+    st.info("Configure your biweekly employer-matched contributions.")
     
-    biweekly_pct = st.slider(
-        "Biweekly RRSP (%)", 0.0, 18.0, 
-        value=saved_data.get("biweekly_pct", 6.0), 
-        key="biweekly_pct"
-    )
+    biweekly_pct = st.slider("Biweekly RRSP (%)", 0.0, 18.0, value=saved_data.get("biweekly_pct", 6.0), key="biweekly_pct")
+    employer_match = st.slider("Employer Match (%)", 0.0, 10.0, value=saved_data.get("employer_match", 4.0), key="employer_match")
     
-    employer_match = st.slider(
-        "Employer Match (%)", 0.0, 10.0, 
-        value=saved_data.get("employer_match", 4.0), 
-        key="employer_match"
-    )
+    st.header("📅 Bulk Contributions")
+    st.info("Lump sums to be deposited manually before the March deadline.")
     
-    st.header("📅 March 1st Bulk Actions")
-    st.write("Lump sum amounts to be deposited before the deadline.")
+    rrsp_lump_sum = st.number_input("RRSP Lump Sum ($)", value=saved_data.get("rrsp_lump_sum", 10000), key="rrsp_lump_sum")
+    tfsa_lump_sum = st.number_input("TFSA Lump Sum ($)", value=saved_data.get("tfsa_lump_sum", 7000), key="tfsa_lump_sum")
     
-    rrsp_lump_sum = st.number_input(
-        "RRSP Lump Sum ($)", 
-        value=saved_data.get("rrsp_lump_sum", 10000),
-        step=1000,
-        key="rrsp_lump_sum"
-    )
-    
-    tfsa_lump_sum = st.number_input(
-        "TFSA Lump Sum ($)", 
-        value=saved_data.get("tfsa_lump_sum", 7000),
-        step=1000,
-        key="tfsa_lump_sum"
-    )
-    
-    st.header("📁 Available Room")
+    st.header("📁 Room Registry")
     rrsp_room = st.number_input("Unused RRSP Room", value=saved_data.get("rrsp_room", 146000), key="rrsp_room")
     tfsa_room = st.number_input("Unused TFSA Room", value=saved_data.get("tfsa_room", 102000), key="tfsa_room")
 
@@ -125,26 +93,20 @@ with st.sidebar:
     with c_save:
         if st.button("💾 Save Inputs"):
             current_state = {
-                "t4_gross_income": t4_gross_income,
-                "base_salary": base_salary,
-                "biweekly_pct": biweekly_pct,
-                "employer_match": employer_match,
-                "rrsp_lump_sum": rrsp_lump_sum,
-                "tfsa_lump_sum": tfsa_lump_sum,
-                "rrsp_room": rrsp_room,
-                "tfsa_room": tfsa_room
+                "t4_gross_income": t4_gross_income, "base_salary": base_salary,
+                "biweekly_pct": biweekly_pct, "employer_match": employer_match,
+                "rrsp_lump_sum": rrsp_lump_sum, "tfsa_lump_sum": tfsa_lump_sum,
+                "rrsp_room": rrsp_room, "tfsa_room": tfsa_room
             }
-            if save_to_file(current_state):
-                st.success("Saved!")
+            save_to_file(current_state)
+            st.success("Saved!")
     
     with c_reset:
-        # FIX 1: RESET LOGIC
-        if st.button("🔄 Reset"):
-            # 1. Delete the file
+        # CHANGE 1: Reset to Zero and Delete Save
+        if st.button("🔄 Reset to 0"):
             if os.path.exists(SAVE_FILE): os.remove(SAVE_FILE)
-            # 2. Clear Session State to force widgets to reload defaults
-            st.session_state.clear()
-            # 3. Rerun
+            for key in st.session_state.keys():
+                st.session_state[key] = 0
             st.rerun()
 
 # --- 4. CALCULATIONS ---
@@ -157,50 +119,51 @@ final_rrsp_room = max(0, rrsp_room - total_rrsp_contributions)
 final_tfsa_room = max(0, tfsa_room - tfsa_lump_sum)
 est_refund = total_rrsp_contributions * 0.46
 
-# --- 5. HEADER & PRINT ---
+# --- 5. REPORT HEADER & PDF BUTTON ---
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
-    st.header("📊 Strategy Execution Dashboard")
-    st.write("Review the impact of your contributions on your registered room limits.")
+    st.header("📋 Retirement Strategy Report")
+    st.write("This report summarizes your contribution plan and the resulting tax savings.")
 with col_h2:
-    print_btn = """<script>function print_page() { window.print(); }</script>
-    <button onclick="print_page()" style="padding: 10px 20px; background-color: #3b82f6; color: white; border: none; border-radius: 5px; cursor: pointer; width: 100%; font-weight: bold;">🖨️ Print / Save PDF</button>"""
-    components.html(print_btn, height=60)
+    # CHANGE 2: Improved PDF button using standard HTML/JS
+    st.write("")
+    components.html("""
+        <button onclick="window.print()" style="
+            width: 100%; height: 50px; background-color: #3b82f6; color: white; 
+            border: none; border-radius: 8px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            📄 Generate PDF / Print
+        </button>
+    """, height=70)
 
 # --- 6. ROOM TRACKER ---
+st.divider()
+st.subheader("🏦 Registration Room Status")
+st.write("Current status of your RRSP and TFSA limits after executing this strategy.")
 room_df = pd.DataFrame({
     "Account": ["RRSP Room", "TFSA Room"],
-    "Starting Room": [f"${rrsp_room:,.0f}", f"${tfsa_room:,.0f}"],
-    "Strategy Usage": [f"-${total_rrsp_contributions:,.0f} (Periodic + Bulk)", f"-${tfsa_lump_sum:,.0f} (Bulk Only)"],
-    "Post-Strategy Room": [f"${final_rrsp_room:,.0f}", f"${final_tfsa_room:,.0f}"]
+    "Starting": [f"${rrsp_room:,.0f}", f"${tfsa_room:,.0f}"],
+    "Usage": [f"-${total_rrsp_contributions:,.0f}", f"-${tfsa_lump_sum:,.0f}"],
+    "Remaining": [f"${final_rrsp_room:,.0f}", f"${final_tfsa_room:,.0f}"]
 })
 st.table(room_df)
 
-# --- 7. ACTION: BEFORE MARCH 1st ---
+# --- 7. ACTION PLAN ---
 st.divider()
-st.header("📅 Action Plan: Before March 1st")
-st.markdown("Execute these specific transfers before the deadline to lock in tax savings for the current tax year.")
-
+st.subheader("📅 March 1st Deadlines")
+st.write("Specific financial actions required before the tax deadline.")
 ac1, ac2, ac3 = st.columns(3)
 with ac1:
-    st.subheader("1. RRSP Bulk")
-    st.metric("Lump Sum Target", f"${rrsp_lump_sum:,.0f}")
-    st.caption("Clears the highest tax bracket.")
-
+    st.metric("RRSP Bulk Deposit", f"${rrsp_lump_sum:,.0f}")
 with ac2:
-    st.subheader("2. TFSA Bulk")
-    st.metric("Lump Sum Target", f"${tfsa_lump_sum:,.0f}")
-    st.caption("Tax-free growth injection.")
-
+    st.metric("TFSA Bulk Deposit", f"${tfsa_lump_sum:,.0f}")
 with ac3:
-    st.subheader("3. The Reward")
-    st.metric("Est. Tax Refund", f"${est_refund:,.0f}")
-    st.caption("Reinvest in April/May.")
+    st.metric("Expected Tax Refund", f"${est_refund:,.0f}")
 
-# --- 8. TAX BUILDING VISUALIZER ---
+# --- 8. THE TAX BUILDING ---
 st.divider()
-st.subheader("🏢 The Tax Building (Progressive Shielding)")
-st.write("This chart visualizes how your income 'stacks' up against tax brackets. **Blue** areas are income you have successfully shielded from tax.")
+st.subheader("🏢 The Tax Building Visualizer")
+st.write("Visual representation of your income floors. Blue sections represent income shielded by your RRSP contributions.")
 
 BRACKETS = [
     {"Floor": "Floor 1", "low": 0, "top": 53891, "rate": 0.1905},
@@ -215,10 +178,8 @@ building_data = []
 for b in BRACKETS:
     total_in_bracket = min(t4_gross_income, b['top']) - b['low']
     if total_in_bracket <= 0: continue
-    
     taxed_amt = max(0, min(b['top'], taxable_income_for_chart) - b['low'])
     shielded_amt = total_in_bracket - taxed_amt
-    
     if shielded_amt > 0:
         building_data.append({"Floor": b['Floor'], "Amount": shielded_amt, "Status": "Shielded", "Rate": f"{b['rate']*100:.1f}%"})
     if taxed_amt > 0:
@@ -231,19 +192,3 @@ chart = alt.Chart(pd.DataFrame(building_data)).mark_bar().encode(
     tooltip=['Floor', 'Amount', 'Rate', 'Status']
 ).properties(height=400)
 st.altair_chart(chart, use_container_width=True)
-
-# --- 9. SUMMARY ---
-st.divider()
-st.subheader("📊 Retirement Strategy Summary")
-st.write("A high-level view of your current tax efficiency and prioritization.")
-
-summary_df = pd.DataFrame({
-    "Action": ["RRSP (High Value)", "RRSP (Low Value)", "TFSA"],
-    "Current Impact": [
-        f"${max(0, taxable_income_for_chart - tax_cliff):,.0f} still in Penthouse",
-        f"${min(taxable_income_for_chart, tax_cliff):,.0f} in lower floors",
-        f"${final_tfsa_room:,.0f} available room"
-    ],
-    "Priority": ["1st - Immediate 48% ROI", "3rd - Tax Deferral only", "2nd - Tax-Free Growth"]
-})
-st.table(summary_df)
