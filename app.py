@@ -40,19 +40,19 @@ st.markdown("""
         margin-bottom: 20px;
         color: #1f2937;
     }
-    /* IMPROVED PDF PRINT LOGIC */
+    .desc-box p, .desc-box li {
+        margin-bottom: 5px;
+        font-size: 0.95rem;
+    }
     @media print {
-        /* Hide UI elements */
         div[data-testid="stSidebar"], .stButton, button, header, footer, [data-testid="stToolbar"], .pinned {
             display: none !important;
         }
-        /* Ensure all content is visible and takes full width */
         .main .block-container {
             max-width: 100% !important;
             padding: 0 !important;
             margin: 0 !important;
         }
-        /* Fix for charts and tables disappearing */
         div, table, tr, td, th {
             page-break-inside: avoid !important;
             opacity: 1 !important;
@@ -68,39 +68,39 @@ def description_box(text):
 # --- 3. SIDEBAR: INPUTS ---
 with st.sidebar:
     st.header("👤 Income Inputs")
-    description_box("Enter your annual T4 Gross (for tax bracket height) and your Base Salary (for biweekly RRSP calcs).")
+    description_box("""
+    * **Annual T4 Gross:** Your total income for tax bracket calculation.
+    * **Base Salary:** Your fixed salary used for biweekly contribution logic.
+    """)
     
-    t4_gross_income = st.number_input(
-        "T4 Gross Income (Total)", 
-        value=float(saved_data.get("t4_gross_income", 0)), 
-        step=5000.0,
-        key="t4_gross_income"
-    )
-    
-    base_salary = st.number_input(
-        "Annual Base Salary ($)", 
-        value=float(saved_data.get("base_salary", 0)), 
-        step=5000.0, 
-        key="base_salary"
-    )
+    t4_gross_income = st.number_input("T4 Gross Income (Total)", value=float(saved_data.get("t4_gross_income", 0)), step=5000.0)
+    base_salary = st.number_input("Annual Base Salary ($)", value=float(saved_data.get("base_salary", 0)), step=5000.0)
     
     st.header("💰 RRSP Payroll Setup")
-    description_box("Set your biweekly % and employer match. This calculates automatic savings.")
+    description_box("""
+    * **Biweekly %:** Your personal contribution from each paycheck.
+    * **Employer Match:** The additional % provided by your company.
+    """)
     
-    biweekly_pct = st.slider("Biweekly RRSP (%)", 0.0, 18.0, value=float(saved_data.get("biweekly_pct", 0.0)), key="biweekly_pct")
-    employer_match = st.slider("Employer Match (%)", 0.0, 10.0, value=float(saved_data.get("employer_match", 0.0)), key="employer_match")
+    biweekly_pct = st.slider("Biweekly RRSP (%)", 0.0, 18.0, value=float(saved_data.get("biweekly_pct", 0.0)))
+    employer_match = st.slider("Employer Match (%)", 0.0, 10.0, value=float(saved_data.get("employer_match", 0.0)))
     
     st.header("📅 Bulk Contributions")
-    description_box("Lump sums for RRSP and TFSA to be deposited before March 1st.")
+    description_box("""
+    * **RRSP Lump Sum:** Manual deposit before the March 1st deadline.
+    * **TFSA Lump Sum:** Annual contribution for tax-free growth.
+    """)
     
-    rrsp_lump_sum = st.number_input("RRSP Lump Sum ($)", value=float(saved_data.get("rrsp_lump_sum", 0)), key="rrsp_lump_sum")
-    tfsa_lump_sum = st.number_input("TFSA Lump Sum ($)", value=float(saved_data.get("tfsa_lump_sum", 0)), key="tfsa_lump_sum")
+    rrsp_lump_sum = st.number_input("RRSP Lump Sum ($)", value=float(saved_data.get("rrsp_lump_sum", 0)))
+    tfsa_lump_sum = st.number_input("TFSA Lump Sum ($)", value=float(saved_data.get("tfsa_lump_sum", 0)))
     
     st.header("📁 Room Registry")
-    description_box("Enter your unused room from your CRA Notice of Assessment.")
+    description_box("""
+    * **Unused Room:** Enter limits from your latest Notice of Assessment.
+    """)
     
-    rrsp_room = st.number_input("Unused RRSP Room", value=float(saved_data.get("rrsp_room", 0)), key="rrsp_room")
-    tfsa_room = st.number_input("Unused TFSA Room", value=float(saved_data.get("tfsa_room", 0)), key="tfsa_room")
+    rrsp_room = st.number_input("Unused RRSP Room", value=float(saved_data.get("rrsp_room", 0)))
+    tfsa_room = st.number_input("Unused TFSA Room", value=float(saved_data.get("tfsa_room", 0)))
 
     st.divider()
     
@@ -132,27 +132,27 @@ final_rrsp_room = max(0.0, rrsp_room - total_rrsp_contributions)
 final_tfsa_room = max(0.0, tfsa_room - tfsa_lump_sum)
 est_refund = total_rrsp_contributions * 0.46
 
-# --- 5. MAIN CONTENT REORDERED ---
+# --- 5. MAIN CONTENT ---
 
 st.title("🏛️ TAX RRSP/TFSA Planner")
 
-# A. QUICK START GUIDE (UPDATED TEXT)
 st.header("🚀 Quick Start Guide")
 description_box("""
-1. **Input Data:** Use the sidebar to enter your Income, Room Limits,.
-2. **Review Deadlines:** Check the 'March 1st Deadlines' section for immediate actions.
-3. **Visualize Savings:** Look at the 'Tax Building' to see how your RRSP 'shields' your income from high tax brackets.
-4. **Optimize:** Adjust your Lump Sums to eliminate income in the orange 'Taxed' zones of the Penthouse floor.
-5. **Finalize:** Hit 'Save' to keep your data or 'Save as PDF' for your records.
+* **1. Input Data:** Use the sidebar to enter your Income and Room Limits.
+* **2. Review Deadlines:** Check the 'March 1st Deadlines' section for immediate actions.
+* **3. Visualize Savings:** Look at the 'Tax Building' to see how RRSP 'shields' your income.
+* **4. Optimize:** Adjust Lump Sums to eliminate income in the orange 'Taxed' zones.
+* **5. Finalize:** Hit 'Save' to keep data or 'Save as PDF' for your records.
 """)
 
-# B. ACTION PLAN & PDF
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
     st.subheader("📅 March 1st Deadlines")
-    description_box("Priority actions to execute before the tax deadline to maximize your return.")
+    description_box("""
+    * **Priority Actions:** Specific steps to take before the deadline.
+    * **Tax Impact:** Estimated refund based on your total RRSP contribution.
+    """)
 with col_h2:
-    # Button triggers full window print which is captured by the PDF stylesheet
     components.html("""
         <button onclick="window.print()" style="
             width: 100%; height: 50px; background-color: #3b82f6; color: white; 
@@ -164,18 +164,17 @@ with col_h2:
 ac1, ac2, ac3 = st.columns(3)
 with ac1:
     st.metric("RRSP Bulk Deposit", f"${rrsp_lump_sum:,.0f}")
-    st.caption("Manual transfer needed.")
 with ac2:
     st.metric("TFSA Bulk Deposit", f"${tfsa_lump_sum:,.0f}")
-    st.caption("Maximize tax-free growth.")
 with ac3:
     st.metric("Expected Tax Refund", f"${est_refund:,.0f}")
-    st.caption("Estimated return based on RRSP.")
 
-# C. ROOM TRACKER
 st.divider()
 st.subheader("🏦 Registration Room Status")
-description_box("Tracking the depletion of your available tax-advantaged room based on your total planned contributions.")
+description_box("""
+* **Room Usage:** Shows how contributions consume your available limits.
+* **Remaining Room:** Your projected room after all actions are completed.
+""")
 room_df = pd.DataFrame({
     "Account": ["RRSP Room", "TFSA Room"],
     "Starting": [f"${rrsp_room:,.0f}", f"${tfsa_room:,.0f}"],
@@ -184,10 +183,12 @@ room_df = pd.DataFrame({
 })
 st.table(room_df)
 
-# D. THE TAX BUILDING
 st.divider()
 st.subheader("🏢 The Tax Building Visualizer")
-description_box("This chart shows your income progression. Shielded (Blue) segments represent income removed from taxation.")
+description_box("""
+* **Shielded (Blue):** Income removed from taxation via RRSP.
+* **Taxed (Orange):** Remaining income exposed to bracket-specific rates.
+""")
 
 
 
@@ -222,10 +223,12 @@ else:
     ).properties(height=400)
     st.altair_chart(chart, use_container_width=True)
 
-# E. STRATEGY SUMMARY TABLE
 st.divider()
 st.subheader("📊 Strategic Prioritization")
-description_box("An efficiency ranking of your accounts based on marginal ROI.")
+description_box("""
+* **RRSP High Value:** Focus here first to eliminate high-marginal tax (48%).
+* **TFSA:** Secondary focus for long-term tax-free growth.
+""")
 
 summary_df = pd.DataFrame({
     "Action": ["RRSP (High Value)", "RRSP (Low Value)", "TFSA"],
@@ -238,4 +241,6 @@ summary_df = pd.DataFrame({
 })
 st.table(summary_df)
 
-description_box("**Executive Summary:** Your current setup effectively utilizes your marginal tax rate. Ensure the bulk deposits are cleared before March 1st.")
+description_box("""
+* **Executive Summary:** Your setup effectively utilizes your marginal tax rate. Ensure deposits clear before March 1st.
+""")
