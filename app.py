@@ -305,7 +305,735 @@ if st.session_state.current_page == "Home":
         
         # Get projected balances from latest year
         if latest_data:
-            target_cagr = year_data.get("target_cagr", 7.0) / 100  # Convert to decimal
+            target_cagr = latest_data.get("target_cagr", 7.0) / 100
+            rrsp_start = latest_data.get("rrsp_balance_start", 0)
+            tfsa_start = latest_data.get("tfsa_balance_start", 0)
+            
+            annual_rrsp = (latest_data.get('base_salary', 0) * 
+                          (latest_data.get('biweekly_pct', 0) + latest_data.get('employer_match', 0)) / 100) + \
+                          latest_data.get('rrsp_lump_sum', 0)
+            tfsa_contrib = latest_data.get('tfsa_lump_sum', 0)
+            
+            rrsp_growth = rrsp_start * target_cagr + annual_rrsp * (target_cagr / 2)
+            tfsa_growth = tfsa_start * target_cagr + tfsa_contrib * (target_cagr / 2)
+            
+            latest_rrsp_balance = rrsp_start + rrsp_growth + annual_rrsp
+            latest_tfsa_balance = tfsa_start + tfsa_growth + tfsa_contrib
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric(
+                "Current RRSP Balance",
+                f"${latest_rrsp_balance:,.0f}",
+                delta=f"{total_rrsp_all:,.0f} lifetime contrib",
+                help=f"Projected balance as of end of {latest_year}"
+            )
+        
+        with col2:
+            st.metric(
+                "Current TFSA Balance",
+                f"${latest_tfsa_balance:,.0f}",
+                delta=f"{total_tfsa_all:,.0f} lifetime contrib",
+                help=f"Projected balance as of end of {latest_year}"
+            )
+        
+        with col3:
+            st.metric(
+                "Total Tax Shield Value",
+                f"${total_tax_shield:,.0f}",
+                help="Cumulative tax refunds generated from RRSP contributions"
+            )
+        
+        with col4:
+            st.metric(
+                "Total Portfolio Value",
+                f"${latest_rrsp_balance + latest_tfsa_balance:,.0f}",
+                delta=f"+${(latest_rrsp_balance + latest_tfsa_balance) - (total_rrsp_all + total_tfsa_all):,.0f} growth",
+                help="Combined RRSP + TFSA current value"
+            )
+        
+        st.divider()
+        
+        # Multi-Year Portfolio Growth Chart
+        st.markdown("### 📈 Portfolio Growth Over Time")
+        
+        portfolio_history = []
+        
+        for yr in sorted(all_history.keys(), key=lambda x: int(x)):
+            data = all_history[yr]
+            
+            target_cagr = data.get("target_cagr", 7.0) / 100
+            rrsp_start = data.get("rrsp_balance_start", 0)
+            tfsa_start = data.get("tfsa_balance_start", 0)
+            
+            annual_rrsp = (data.get('base_salary', 0) * 
+                          (data.get('biweekly_pct', 0) + data.get('employer_match', 0)) / 100) + \
+                          data.get('rrsp_lump_sum_optimization', 0) + \
+                          data.get('rrsp_lump_sum_additional', 0) + \
+                          data.get('rrsp_lump_sum', 0)  # Legacy support
+            tfsa_contrib = data.get('tfsa_lump_sum', 0)
+            
+            # Start of year
+            portfolio_history.append({
+                "Year": f"{yr} (Jan)",
+                "RRSP Balance": rrsp_start,
+                "TFSA Balance": tfsa_start,
+                "Total": rrsp_start + tfsa_start
+            })
+            
+            # End of year (with growth and contributions)
+            rrsp_growth = rrsp_start * target_cagr + annual_rrsp * (target_cagr / 2)
+            tfsa_growth = tfsa_start * target_cagr + tfsa_contrib * (target_cagr / 2)
+            
+            rrsp_end = rrsp_start + rrsp_growth + annual_rrsp
+            tfsa_end = tfsa_start + tfsa_growth + tfsa_contrib
+            
+            portfolio_history.append({
+                "Year": f"{yr} (Dec)",
+                "RRSP Balance": rrsp_end,
+                "TFSA Balance": tfsa_end,
+                "Total": rrsp_end + tfsa_end
+            })
+        
+        if portfolio_history:
+            df_portfolio = pd.DataFrame(portfolio_history)
+            
+            # Stacked area chart for portfolio composition
+            portfolio_melted = df_portfolio[['Year', 'RRSP Balance', 'TFSA Balance']].melt(
+                'Year',
+                var_name='Account',
+                value_name='Balance'
+            )
+            
+            portfolio_chart = alt.Chart(portfolio_melted).mark_area(
+                opacity=0.8,
+                line=True
+            ).encode(
+                x=alt.X('Year:N', title='Timeline', axis=alt.Axis(labelAngle=-45)),
+                y=alt.Y('Balance:Q', title='Portfolio Value ($)', stack='zero'),
+                color=alt.Color('Account:N',
+                    scale=alt.Scale(
+                        domain=['RRSP Balance', 'TFSA Balance'],
+                        range=['#3b82f6', '#10b981']
+                    ),
+                    legend=alt.Legend(title="Account Type")
+                ),
+                tooltip=[
+                    alt.Tooltip('Year:N', title='Period'),
+                    alt.Tooltip('Account:N', title='Account'),
+                    alt.Tooltip('Balance:Q', title='Balance', format='$,.0f')
+                ]
+            ).properties(height=400)
+            
+            st.altair_chart(portfolio_chart, use_container_width=True)
+            
+            # Summary stats
+            col_stats1, col_stats2, col_stats3 = st.columns(3)
+            
+            first_total = df_portfolio.iloc[0]['Total']
+            last_total = df_portfolio.iloc[-1]['Total']
+            total_return = last_total - first_total
+            total_return_pct = (total_return / max(1, first_total)) * 100
+            
+            with col_stats1:
+                st.metric(
+                    "Total Growth",
+                    f"${total_return:,.0f}",
+                    delta=f"+{total_return_pct:.1f}%"
+                )
+            
+            with col_stats2:
+                years_tracked = len(all_history)
+                annualized_return = ((last_total / max(1, first_total)) ** (1 / max(1, years_tracked)) - 1) * 100 if first_total > 0 else 0
+                st.metric(
+                    "Annualized Return",
+                    f"{annualized_return:.2f}%",
+                    help="Compound annual growth rate across tracked years"
+                )
+            
+            with col_stats3:
+                st.metric(
+                    "Years Tracked",
+                    f"{years_tracked}",
+                    help="Number of years with saved data"
+                )
+        
+        st.divider()
+    
+    # Planning Years Grid
+    st.markdown("### 📅 Planning Years")
+    
+    # Add new year functionality - simple row
+    col_add1, col_add2, col_add3 = st.columns([2, 1, 1])
+    with col_add1:
+        new_year_input = st.number_input(
+            "Add Planning Year",
+            min_value=2020,
+            max_value=2050,
+            value=2031,
+            step=1,
+            key="new_year_input"
+        )
+    with col_add2:
+        if st.button("➕ Add Year", use_container_width=True):
+            if str(new_year_input) not in all_history:
+                # Create empty year entry
+                save_year_data(new_year_input, {
+                    "t4_gross_income": 0,
+                    "other_income": 0,
+                    "base_salary": 0,
+                    "biweekly_pct": 0,
+                    "employer_match": 0,
+                    "rrsp_lump_sum_optimization": 0,
+                    "rrsp_lump_sum_additional": 0,
+                    "tfsa_lump_sum": 0,
+                    "rrsp_room": 0,
+                    "tfsa_room": 0,
+                    "rrsp_balance_start": 0,
+                    "tfsa_balance_start": 0,
+                    "target_cagr": 7.0
+                })
+                st.success(f"✓ Year {new_year_input} added!")
+                st.rerun()
+            else:
+                st.warning(f"Year {new_year_input} already exists!")
+    with col_add3:
+        st.write("")  # Spacer
+    
+    st.divider()
+    
+    # Get all years (saved + default range)
+    all_years = set(range(2024, 2031))
+    all_years.update([int(yr) for yr in all_history.keys()])
+    years_to_show = sorted(list(all_years))
+    
+    cols_per_row = 4
+    
+    for row_start in range(0, len(years_to_show), cols_per_row):
+        cols = st.columns(cols_per_row)
+        for i, yr in enumerate(years_to_show[row_start:row_start + cols_per_row]):
+            with cols[i]:
+                is_saved = str(yr) in all_history
+                is_optimized = is_year_optimized(all_history.get(str(yr), {})) if is_saved else False
+                
+                # Determine status and styling
+                if not is_saved:
+                    # Red - Empty
+                    status_emoji = "🔴"
+                    status_text = "Empty"
+                    button_label = f"📅 **{yr}**\n{status_emoji} {status_text}"
+                    container_style = "background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border: 2px solid #ef4444; border-radius: 12px; padding: 4px;"
+                elif is_optimized:
+                    # Green - Optimized
+                    data = all_history[str(yr)]
+                    annual_rrsp = (data.get('base_salary', 0) * 
+                                  (data.get('biweekly_pct', 0) + data.get('employer_match', 0)) / 100) + \
+                                  data.get('rrsp_lump_sum_optimization', 0) + \
+                                  data.get('rrsp_lump_sum_additional', 0) + \
+                                  data.get('rrsp_lump_sum', 0)
+                    status_emoji = "🟢"
+                    status_text = f"${annual_rrsp:,.0f}"
+                    button_label = f"📅 **{yr}**\n{status_text}\n{status_emoji} Optimized"
+                    container_style = "background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border: 2px solid #10b981; border-radius: 12px; padding: 4px;"
+                else:
+                    # Orange - In Progress
+                    data = all_history[str(yr)]
+                    annual_rrsp = (data.get('base_salary', 0) * 
+                                  (data.get('biweekly_pct', 0) + data.get('employer_match', 0)) / 100) + \
+                                  data.get('rrsp_lump_sum_optimization', 0) + \
+                                  data.get('rrsp_lump_sum_additional', 0) + \
+                                  data.get('rrsp_lump_sum', 0)
+                    status_emoji = "🟠"
+                    status_text = f"${annual_rrsp:,.0f}"
+                    button_label = f"📅 **{yr}**\n{status_text}\n{status_emoji} In Progress"
+                    container_style = "background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%); border: 2px solid #f97316; border-radius: 12px; padding: 4px;"
+                
+                # Wrap button in styled container
+                st.markdown(f'<div style="{container_style}">', unsafe_allow_html=True)
+                
+                # Create the button
+                if st.button(
+                    button_label,
+                    key=f"home_{yr}",
+                    use_container_width=True,
+                    type="primary" if is_saved else "secondary"
+                ):
+                    st.session_state.selected_year = yr
+                    st.session_state.current_page = "Year View"
+                    st.rerun()
+                
+                st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Multi-Year Analytics
+    if all_history and len(all_history) > 1:
+        st.divider()
+        st.markdown("### 📈 Multi-Year Analytics & Trends")
+        
+        # Prepare data for charts
+        chart_data = []
+        room_data = []
+        burndown_data = []
+        
+        for yr, data in sorted(all_history.items(), key=lambda x: x[0]):
+            t4_gross = data.get('t4_gross_income', 0)
+            other_inc = data.get('other_income', 0)
+            total_gross = t4_gross + other_inc
+            
+            annual_rrsp = (data.get('base_salary', 0) * 
+                          (data.get('biweekly_pct', 0) + data.get('employer_match', 0)) / 100) + \
+                          data.get('rrsp_lump_sum_optimization', 0) + \
+                          data.get('rrsp_lump_sum_additional', 0) + \
+                          data.get('rrsp_lump_sum', 0)  # Legacy support
+            tfsa_contrib = data.get('tfsa_lump_sum', 0)
+            gross = total_gross
+            
+            rrsp_room_avail = data.get('rrsp_room', 0)
+            tfsa_room_avail = data.get('tfsa_room', 0)
+            
+            chart_data.append({
+                "Year": yr,
+                "Gross Income": gross,
+                "Taxable Income": gross - annual_rrsp,
+                "Tax Shield": annual_rrsp,
+                "RRSP": annual_rrsp,
+                "TFSA": tfsa_contrib
+            })
+            
+            room_data.append({
+                "Year": yr,
+                "Account": "RRSP",
+                "Remaining Room": max(0, rrsp_room_avail - annual_rrsp)
+            })
+            room_data.append({
+                "Year": yr,
+                "Account": "TFSA",
+                "Remaining Room": max(0, tfsa_room_avail - tfsa_contrib)
+            })
+            
+            # Burndown data - showing used vs available
+            burndown_data.append({
+                "Year": yr,
+                "Account": "RRSP",
+                "Status": "Used",
+                "Amount": annual_rrsp
+            })
+            burndown_data.append({
+                "Year": yr,
+                "Account": "RRSP",
+                "Status": "Available",
+                "Amount": max(0, rrsp_room_avail - annual_rrsp)
+            })
+            burndown_data.append({
+                "Year": yr,
+                "Account": "TFSA",
+                "Status": "Used",
+                "Amount": tfsa_contrib
+            })
+            burndown_data.append({
+                "Year": yr,
+                "Account": "TFSA",
+                "Status": "Available",
+                "Amount": max(0, tfsa_room_avail - tfsa_contrib)
+            })
+        
+        df_chart = pd.DataFrame(chart_data)
+        df_room = pd.DataFrame(room_data)
+        df_burndown = pd.DataFrame(burndown_data)
+        
+        # RRSP & TFSA Burndown Charts
+        st.markdown("**Contribution Room Burndown Analysis**")
+        st.caption("See how much room you're using vs. leaving unused each year")
+        
+        col_burn1, col_burn2 = st.columns(2)
+        
+        with col_burn1:
+            st.markdown("**RRSP Room Utilization**")
+            
+            rrsp_burndown = df_burndown[df_burndown['Account'] == 'RRSP']
+            
+            rrsp_chart = alt.Chart(rrsp_burndown).mark_bar().encode(
+                x=alt.X('Year:N', title='Year'),
+                y=alt.Y('Amount:Q', title='RRSP Room ($)', stack='zero'),
+                color=alt.Color('Status:N',
+                    scale=alt.Scale(
+                        domain=['Used', 'Available'],
+                        range=['#10b981', '#e2e8f0']
+                    ),
+                    legend=alt.Legend(title="Room Status")
+                ),
+                tooltip=[
+                    alt.Tooltip('Year:N', title='Year'),
+                    alt.Tooltip('Status:N', title='Status'),
+                    alt.Tooltip('Amount:Q', title='Amount', format='$,.0f')
+                ]
+            ).properties(height=320)
+            
+            st.altair_chart(rrsp_chart, use_container_width=True)
+            
+            # Calculate average utilization
+            total_used = rrsp_burndown[rrsp_burndown['Status'] == 'Used']['Amount'].sum()
+            total_available = rrsp_burndown['Amount'].sum()
+            utilization = (total_used / total_available * 100) if total_available > 0 else 0
+            st.metric("Avg RRSP Utilization", f"{utilization:.1f}%")
+        
+        with col_burn2:
+            st.markdown("**TFSA Room Utilization**")
+            
+            tfsa_burndown = df_burndown[df_burndown['Account'] == 'TFSA']
+            
+            tfsa_chart = alt.Chart(tfsa_burndown).mark_bar().encode(
+                x=alt.X('Year:N', title='Year'),
+                y=alt.Y('Amount:Q', title='TFSA Room ($)', stack='zero'),
+                color=alt.Color('Status:N',
+                    scale=alt.Scale(
+                        domain=['Used', 'Available'],
+                        range=['#3b82f6', '#e2e8f0']
+                    ),
+                    legend=alt.Legend(title="Room Status")
+                ),
+                tooltip=[
+                    alt.Tooltip('Year:N', title='Year'),
+                    alt.Tooltip('Status:N', title='Status'),
+                    alt.Tooltip('Amount:Q', title='Amount', format='$,.0f')
+                ]
+            ).properties(height=320)
+            
+            st.altair_chart(tfsa_chart, use_container_width=True)
+            
+            # Calculate average utilization
+            total_used = tfsa_burndown[tfsa_burndown['Status'] == 'Used']['Amount'].sum()
+            total_available = tfsa_burndown['Amount'].sum()
+            utilization = (total_used / total_available * 100) if total_available > 0 else 0
+            st.metric("Avg TFSA Utilization", f"{utilization:.1f}%")
+        
+        st.divider()
+        
+        col_left, col_right = st.columns(2)
+        
+        with col_left:
+            st.markdown("**Income vs. Tax-Shielded Income**")
+            
+            income_df = df_chart[['Year', 'Gross Income', 'Taxable Income']].melt(
+                'Year',
+                var_name='Category',
+                value_name='Amount'
+            )
+            
+            income_chart = alt.Chart(income_df).mark_bar(opacity=0.85).encode(
+                x=alt.X('Year:N', title='Year'),
+                y=alt.Y('Amount:Q', title='Income ($)'),
+                color=alt.Color('Category:N',
+                    scale=alt.Scale(
+                        domain=['Gross Income', 'Taxable Income'],
+                        range=['#94a3b8', '#3b82f6']
+                    ),
+                    legend=alt.Legend(title="Income Type")
+                ),
+                xOffset='Category:N'
+            ).properties(height=320)
+            
+            st.altair_chart(income_chart, use_container_width=True)
+        
+        with col_right:
+            st.markdown("**Remaining Room Trajectory**")
+            
+            room_chart = alt.Chart(df_room).mark_area(
+                opacity=0.7,
+                line=True
+            ).encode(
+                x=alt.X('Year:N', title='Year'),
+                y=alt.Y('Remaining Room:Q', title='Remaining Room ($)'),
+                color=alt.Color('Account:N',
+                    scale=alt.Scale(
+                        domain=['RRSP', 'TFSA'],
+                        range=['#3b82f6', '#10b981']
+                    ),
+                    legend=alt.Legend(title="Account")
+                )
+            ).properties(height=320)
+            
+            st.altair_chart(room_chart, use_container_width=True)
+        
+        # Contribution trends
+        st.markdown("**Annual Contribution Trends**")
+        
+        contrib_df = df_chart[['Year', 'RRSP', 'TFSA']].melt(
+            'Year',
+            var_name='Account',
+            value_name='Contribution'
+        )
+        
+        contrib_chart = alt.Chart(contrib_df).mark_line(
+            point=alt.OverlayMarkDef(filled=False, fill="white", size=80)
+        ).encode(
+            x=alt.X('Year:N', title='Year'),
+            y=alt.Y('Contribution:Q', title='Annual Contribution ($)'),
+            color=alt.Color('Account:N',
+                scale=alt.Scale(
+                    domain=['RRSP', 'TFSA'],
+                    range=['#3b82f6', '#10b981']
+                )
+            ),
+            strokeWidth=alt.value(3)
+        ).properties(height=300)
+        
+        st.altair_chart(contrib_chart, use_container_width=True)
+
+# --- 6. PAGE: YEAR VIEW ---
+else:
+    selected_year = st.session_state.selected_year
+    year_data = all_history.get(str(selected_year), {})
+    
+    # Sidebar with form for inputs
+    with st.sidebar:
+        if st.button("⬅️ Back to Home", use_container_width=True):
+            st.session_state.current_page = "Home"
+            st.rerun()
+        
+        st.markdown(f"## ⚙️ {selected_year} Strategy")
+        
+        with st.form(key="input_form"):
+            st.markdown("### 💵 Income Parameters")
+            
+            t4_gross_income = st.number_input(
+                "Annual T4 Gross Income",
+                value=float(year_data.get("t4_gross_income", 0)),
+                step=5000.0,
+                min_value=0.0,
+                help="Total employment income from Box 14 of your T4"
+            )
+            
+            other_income = st.number_input(
+                "Other Income",
+                value=float(year_data.get("other_income", 0)),
+                step=1000.0,
+                min_value=0.0,
+                help="Additional taxable income (e.g., rental property net income after expenses)"
+            )
+            
+            base_salary = st.number_input(
+                "Annual Base Salary",
+                value=float(year_data.get("base_salary", 0)),
+                step=5000.0,
+                min_value=0.0,
+                help="Core salary used for percentage-based contributions"
+            )
+            
+            st.caption(f"💰 Total Gross Income: ${t4_gross_income + other_income:,.0f}")
+            
+            st.markdown("### 🎯 RRSP Strategy")
+            
+            biweekly_pct = st.slider(
+                "Biweekly RRSP Contribution (%)",
+                0.0, 18.0,
+                value=float(year_data.get("biweekly_pct", 0.0)),
+                step=0.5,
+                help="Percentage deducted from each paycheck"
+            )
+            
+            employer_match = st.slider(
+                "Employer Match (%)",
+                0.0, 10.0,
+                value=float(year_data.get("employer_match", 0.0)),
+                step=0.5,
+                help="Employer contribution percentage (free money!)"
+            )
+            
+            rrsp_lump_sum_optimization = st.number_input(
+                "RRSP Lump Sum (Tax Optimization)",
+                value=float(year_data.get("rrsp_lump_sum_optimization", 0)),
+                step=1000.0,
+                min_value=0.0,
+                help="Strategic deposit to optimize tax bracket positioning"
+            )
+            
+            rrsp_lump_sum_additional = st.number_input(
+                "RRSP Lump Sum (Additional Refund)",
+                value=float(year_data.get("rrsp_lump_sum_additional", 0)),
+                step=1000.0,
+                min_value=0.0,
+                help="Extra contributions to maximize tax refund beyond optimization"
+            )
+            
+            st.caption(f"💰 Total RRSP Lump Sum: ${rrsp_lump_sum_optimization + rrsp_lump_sum_additional:,.0f}")
+            
+            st.markdown("### 🌱 TFSA Strategy")
+            
+            tfsa_lump_sum = st.number_input(
+                "TFSA Lump Sum Deposit",
+                value=float(year_data.get("tfsa_lump_sum", 0)),
+                step=1000.0,
+                min_value=0.0,
+                help="Tax-free savings account contribution"
+            )
+            
+            st.markdown("### 📋 CRA Contribution Limits")
+            
+            # Get default values from previous year if available
+            prev_year = str(selected_year - 1)
+            default_rrsp_room = 0.0
+            default_tfsa_room = 0.0
+            
+            if prev_year in all_history:
+                prev_data = all_history[prev_year]
+                
+                # Calculate remaining room from previous year
+                prev_annual_rrsp = (prev_data.get('base_salary', 0) * 
+                                   (prev_data.get('biweekly_pct', 0) + prev_data.get('employer_match', 0)) / 100) + \
+                                   prev_data.get('rrsp_lump_sum_optimization', 0) + \
+                                   prev_data.get('rrsp_lump_sum_additional', 0)
+                prev_tfsa_contrib = prev_data.get('tfsa_lump_sum', 0)
+                
+                prev_rrsp_room_remaining = max(0, prev_data.get('rrsp_room', 0) - prev_annual_rrsp)
+                prev_tfsa_room_remaining = max(0, prev_data.get('tfsa_room', 0) - prev_tfsa_contrib)
+                
+                # Add new room for current year
+                new_rrsp_room = min(31560, prev_data.get('t4_gross_income', 0) * 0.18)
+                new_tfsa_room = 7000
+                
+                default_rrsp_room = prev_rrsp_room_remaining + new_rrsp_room
+                default_tfsa_room = prev_tfsa_room_remaining + new_tfsa_room
+            
+            rrsp_room = st.number_input(
+                "Available RRSP Room",
+                value=float(year_data.get("rrsp_room", default_rrsp_room)),
+                step=1000.0,
+                min_value=0.0,
+                help="From your latest Notice of Assessment (auto-filled from previous year if available)"
+            )
+            
+            tfsa_room = st.number_input(
+                "Available TFSA Room",
+                value=float(year_data.get("tfsa_room", default_tfsa_room)),
+                step=1000.0,
+                min_value=0.0,
+                help="From CRA MyAccount (auto-filled from previous year if available)"
+            )
+            
+            if prev_year in all_history and default_rrsp_room > 0:
+                st.caption(f"ℹ️ Auto-calculated from {prev_year} carryover + new room")
+            
+            st.markdown("### 📈 Portfolio Tracking")
+            
+            # Calculate default values from previous year's end balances
+            prev_year = str(selected_year - 1)
+            default_rrsp_balance = 0.0
+            default_tfsa_balance = 0.0
+            
+            if prev_year in all_history:
+                prev_data = all_history[prev_year]
+                
+                # Get previous year's values
+                prev_target_cagr = prev_data.get("target_cagr", 7.0) / 100
+                prev_rrsp_start = prev_data.get("rrsp_balance_start", 0)
+                prev_tfsa_start = prev_data.get("tfsa_balance_start", 0)
+                
+                # Calculate previous year's contributions
+                prev_annual_rrsp = (prev_data.get('base_salary', 0) * 
+                                   (prev_data.get('biweekly_pct', 0) + prev_data.get('employer_match', 0)) / 100) + \
+                                   prev_data.get('rrsp_lump_sum_optimization', 0) + \
+                                   prev_data.get('rrsp_lump_sum_additional', 0) + \
+                                   prev_data.get('rrsp_lump_sum', 0)  # Legacy
+                prev_tfsa_contrib = prev_data.get('tfsa_lump_sum', 0)
+                
+                # Calculate previous year's growth
+                prev_rrsp_growth = prev_rrsp_start * prev_target_cagr + prev_annual_rrsp * (prev_target_cagr / 2)
+                prev_tfsa_growth = prev_tfsa_start * prev_target_cagr + prev_tfsa_contrib * (prev_target_cagr / 2)
+                
+                # End balances become start balances for current year
+                default_rrsp_balance = prev_rrsp_start + prev_rrsp_growth + prev_annual_rrsp
+                default_tfsa_balance = prev_tfsa_start + prev_tfsa_growth + prev_tfsa_contrib
+            
+            rrsp_balance_start = st.number_input(
+                "RRSP Balance (Start of Year)",
+                value=float(year_data.get("rrsp_balance_start", default_rrsp_balance)),
+                step=1000.0,
+                min_value=0.0,
+                help="Total RRSP portfolio value on January 1st (auto-calculated from previous year if available)"
+            )
+            
+            tfsa_balance_start = st.number_input(
+                "TFSA Balance (Start of Year)",
+                value=float(year_data.get("tfsa_balance_start", default_tfsa_balance)),
+                step=1000.0,
+                min_value=0.0,
+                help="Total TFSA portfolio value on January 1st (auto-calculated from previous year if available)"
+            )
+            
+            if prev_year in all_history and default_rrsp_balance > 0:
+                st.caption(f"ℹ️ Auto-calculated from {prev_year} end-of-year projected balances")
+            
+            target_cagr = st.slider(
+                "Target Annual Return (CAGR %)",
+                0.0, 50.0,
+                value=float(year_data.get("target_cagr", 7.0)),
+                step=0.5,
+                help="Expected compound annual growth rate for investments (0-50%)"
+            )
+            
+            st.caption(f"📊 Using {target_cagr}% CAGR for growth projections")
+            
+            st.divider()
+            
+            # Form submit buttons
+            col_save, col_reset = st.columns(2)
+            
+            with col_save:
+                submitted = st.form_submit_button(
+                    "💾 Save",
+                    use_container_width=True,
+                    type="primary"
+                )
+            
+            with col_reset:
+                reset = st.form_submit_button(
+                    "🔄 Reset",
+                    use_container_width=True
+                )
+            
+            if submitted:
+                success = save_year_data(selected_year, {
+                    "t4_gross_income": t4_gross_income,
+                    "other_income": other_income,
+                    "base_salary": base_salary,
+                    "biweekly_pct": biweekly_pct,
+                    "employer_match": employer_match,
+                    "rrsp_lump_sum_optimization": rrsp_lump_sum_optimization,
+                    "rrsp_lump_sum_additional": rrsp_lump_sum_additional,
+                    "tfsa_lump_sum": tfsa_lump_sum,
+                    "rrsp_room": rrsp_room,
+                    "tfsa_room": tfsa_room,
+                    "rrsp_balance_start": rrsp_balance_start,
+                    "tfsa_balance_start": tfsa_balance_start,
+                    "target_cagr": target_cagr
+                })
+                
+                if success:
+                    st.session_state.saved_flag = True
+                    st.rerun()
+            
+            if reset:
+                delete_year_data(selected_year)
+                st.rerun()
+        
+        if st.session_state.get("saved_flag"):
+            st.success("✓ Strategy saved successfully!")
+            st.session_state.saved_flag = False
+    
+    # Main content area - Calculations
+    other_income = year_data.get("other_income", 0)
+    total_gross_income = t4_gross_income + other_income
+    
+    annual_rrsp_periodic = base_salary * ((biweekly_pct + employer_match) / 100)
+    rrsp_lump_sum = rrsp_lump_sum_optimization + rrsp_lump_sum_additional
+    total_rrsp_contributions = annual_rrsp_periodic + rrsp_lump_sum
+    taxable_income = max(0, total_gross_income - total_rrsp_contributions)
+    
+    # Portfolio calculations
+    rrsp_balance_start = year_data.get("rrsp_balance_start", 0)
+    tfsa_balance_start = year_data.get("tfsa_balance_start", 0)
+    target_cagr = year_data.get("target_cagr", 7.0) / 100  # Convert to decimal
     
     # Calculate end of year balances (growth + new contributions)
     # Assuming contributions happen throughout the year, use half-year growth on new money
@@ -323,21 +1051,61 @@ if st.session_state.current_page == "Home":
     estimated_refund = calculate_tax_refund(total_gross_income, total_rrsp_contributions)
     marginal_rate = get_marginal_rate(total_gross_income)
     
-    # Optimization status
-    penthouse_threshold = 181440
-    is_optimized = taxable_income < penthouse_threshold
-    
     # Header
     st.title(f"🏛️ Tax Optimization Strategy: {selected_year}")
     
-    # Status Card
-    col_status1, col_status2 = st.columns([3, 1])
+    description_box(
+        "Strategic Execution Framework",
+        f"Follow this comprehensive plan to maximize your tax efficiency and wealth velocity for {selected_year}. "
+        "Each section provides actionable insights to optimize your contribution strategy."
+    )
     
-    with col_status1:
-        description_box(
-            "Strategic Execution Framework",
-            f"Follow this comprehensive plan to maximize your tax efficiency and wealth velocity for {selected_year}. "
-            "Each section provides actionable insights to optimize your contribution strategy."
+    # Key Metrics Dashboard
+    st.markdown("### 📊 Strategic Overview")
+    
+    if other_income > 0:
+        st.info(f"💼 Income Breakdown: T4 ${t4_gross_income:,.0f} + Other ${other_income:,.0f} = Total ${total_gross_income:,.0f}")
+    
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    with col1:
+        st.metric(
+            "Total Gross Income",
+            f"${total_gross_income:,.0f}",
+            delta=f"+${other_income:,.0f} other" if other_income > 0 else None,
+            help="T4 employment income plus other taxable income"
+        )
+    
+    with col2:
+        st.metric(
+            "Tax-Shielded Income",
+            f"${taxable_income:,.0f}",
+            delta=f"-${total_rrsp_contributions:,.0f}",
+            delta_color="inverse",
+            help="Income after RRSP deductions"
+        )
+    
+    with col3:
+        st.metric(
+            "Marginal Tax Rate",
+            f"{marginal_rate*100:.2f}%",
+            help="Your current tax bracket rate"
+        )
+    
+    with col4:
+        st.metric(
+            "Estimated Tax Refund",
+            f"${estimated_refund:,.0f}",
+            delta=f"+{(estimated_refund/max(1,total_rrsp_contributions))*100:.1f}% ROI",
+            help="Tax refund from RRSP contributions"
+        )
+    
+    with col5:
+        st.metric(
+            "Total Portfolio Value",
+            f"${total_portfolio_value:,.0f}",
+            delta=f"+{target_cagr*100:.1f}% target",
+            help="Combined RRSP + TFSA projected end-of-year value"
         )
     
     # Portfolio Growth Dashboard
@@ -507,39 +1275,24 @@ if st.session_state.current_page == "Home":
     # Strategic Prioritization
     st.markdown("### 🎯 Strategic Prioritization Matrix")
     
-    description_box(
-        "Optimization Roadmap",
-        f"**Goal**: Reduce taxable income below ${penthouse_threshold:,.0f} to avoid the Penthouse bracket (47.97% tax rate). "
-        f"Current status: {'✅ Optimized' if is_optimized else '⚠️ Needs Optimization'}"
-    )
-    
-    # Calculate optimization metrics
+    penthouse_threshold = 181440
     penthouse_income = max(0, taxable_income - penthouse_threshold)
     penthouse_shield_needed = max(0, total_gross_income - penthouse_threshold - total_rrsp_contributions)
+    
     remaining_rrsp_room = max(0, rrsp_room - total_rrsp_contributions)
     remaining_tfsa_room = max(0, tfsa_room - tfsa_lump_sum)
     
     # Priority 1: Penthouse Shield
     if penthouse_income > 0:
         priority_1_status = f"⚠️ ${penthouse_income:,.0f} in Penthouse"
-        priority_1_action = f"Increase RRSP by ${penthouse_shield_needed:,.0f}"
+        priority_1_action = f"Deposit ${penthouse_shield_needed:,.0f} to RRSP"
         priority_1_impact = f"Save ${penthouse_income * 0.4797:,.0f} in taxes (47.97% rate)"
         priority_1_class = "priority-high"
-        
-        # Show progress bar
-        optimization_progress = min(1.0, (penthouse_threshold / max(1, taxable_income)))
-        st.markdown("**Optimization Progress:**")
-        st.progress(optimization_progress)
-        st.caption(f"{optimization_progress*100:.1f}% optimized - Need to reduce taxable income by ${penthouse_income:,.0f}")
     else:
         priority_1_status = "✅ Optimized"
         priority_1_action = "No Penthouse exposure"
         priority_1_impact = f"Maximum efficiency at {marginal_rate*100:.2f}% bracket"
         priority_1_class = "priority-medium"
-        
-        st.markdown("**Optimization Progress:**")
-        st.progress(1.0)
-        st.caption("✅ 100% optimized - Below Penthouse threshold!")
     
     st.markdown(f'''
         <div class="premium-card {priority_1_class}">
@@ -901,836 +1654,3 @@ st.markdown("""
         </p>
     </div>
 """, unsafe_allow_html=True)
-    
-    with col_status2:
-        if is_optimized:
-            st.markdown("""
-                <div style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); 
-                     padding: 20px; border-radius: 12px; border: 2px solid #10b981; text-align: center;">
-                    <div style="font-size: 3em;">🟢</div>
-                    <div style="font-size: 1.2em; font-weight: 600; color: #065f46; margin-top: 10px;">
-                        OPTIMIZED
-                    </div>
-                    <div style="font-size: 0.9em; color: #047857; margin-top: 5px;">
-                        This year will show GREEN
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-    
-    # Key Metrics Dashboard
-    st.markdown("### 📊 Strategic Overview")
-    
-    if other_income > 0:
-        st.info(f"💼 Income Breakdown: T4 ${t4_gross_income:,.0f} + Other ${other_income:,.0f} = Total ${total_gross_income:,.0f}")
-    
-    # Optimization Status Banner
-    if is_optimized:
-        st.success(f"🟢 **OPTIMIZED** - Your taxable income (${taxable_income:,.0f}) is below the Penthouse threshold (${penthouse_threshold:,.0f}). This year will show GREEN on the home page.")
-    else:
-        deficit = taxable_income - penthouse_threshold
-        additional_rrsp_needed = deficit
-        st.warning(f"🟠 **IN PROGRESS** - Your taxable income (${taxable_income:,.0f}) exceeds the Penthouse threshold by ${deficit:,.0f}. "
-                  f"Add ${additional_rrsp_needed:,.0f} more to RRSP contributions to achieve GREEN optimization status and save ${deficit * 0.4797:,.0f} in taxes.")
-    
-    col1, col2, col3, col4, col5 = st.columns(5)
-    
-    with col1:
-        st.metric(
-            "Total Gross Income",
-            f"${total_gross_income:,.0f}",
-            delta=f"+${other_income:,.0f} other" if other_income > 0 else None,
-            help="T4 employment income plus other taxable income"
-        )
-    
-    with col2:
-        st.metric(
-            "Tax-Shielded Income",
-            f"${taxable_income:,.0f}",
-            delta=f"-${total_rrsp_contributions:,.0f}",
-            delta_color="inverse",
-            help="Income after RRSP deductions"
-        )
-    
-    with col3:
-        st.metric(
-            "Marginal Tax Rate",
-            f"{marginal_rate*100:.2f}%",
-            help="Your current tax bracket rate"
-        )
-    
-    with col4:
-        st.metric(
-            "Estimated Tax Refund",
-            f"${estimated_refund:,.0f}",
-            delta=f"+{(estimated_refund/max(1,total_rrsp_contributions))*100:.1f}% ROI",
-            help="Tax refund from RRSP contributions"
-        )
-    
-    with col5:
-        st.metric(
-            "Total Portfolio Value",
-            f"${total_portfolio_value:,.0f}",
-            delta=f"+{target_cagr*100:.1f}% target",
-            help="Combined RRSP + TFSA projected end-of-year value"
-        )
-        else:
-            st.markdown("""
-                <div style="background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%); 
-                     padding: 20px; border-radius: 12px; border: 2px solid #f97316; text-align: center;">
-                    <div style="font-size: 3em;">🟠</div>
-                    <div style="font-size: 1.2em; font-weight: 600; color: #7c2d12; margin-top: 10px;">
-                        IN PROGRESS
-                    </div>
-                    <div style="font-size: 0.9em; color: #9a3412; margin-top: 5px;">
-                        More RRSP needed
-                    </div>
-                </div>
-            """, unsafe_allow_html=True) = latest_data.get("target_cagr", 7.0) / 100
-            rrsp_start = latest_data.get("rrsp_balance_start", 0)
-            tfsa_start = latest_data.get("tfsa_balance_start", 0)
-            
-            annual_rrsp = (latest_data.get('base_salary', 0) * 
-                          (latest_data.get('biweekly_pct', 0) + latest_data.get('employer_match', 0)) / 100) + \
-                          latest_data.get('rrsp_lump_sum_optimization', 0) + \
-                          latest_data.get('rrsp_lump_sum_additional', 0) + \
-                          latest_data.get('rrsp_lump_sum', 0)
-            tfsa_contrib = latest_data.get('tfsa_lump_sum', 0)
-            
-            rrsp_growth = rrsp_start * target_cagr + annual_rrsp * (target_cagr / 2)
-            tfsa_growth = tfsa_start * target_cagr + tfsa_contrib * (target_cagr / 2)
-            
-            latest_rrsp_balance = rrsp_start + rrsp_growth + annual_rrsp
-            latest_tfsa_balance = tfsa_start + tfsa_growth + tfsa_contrib
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric(
-                "Current RRSP Balance",
-                f"${latest_rrsp_balance:,.0f}",
-                delta=f"{total_rrsp_all:,.0f} lifetime contrib",
-                help=f"Projected balance as of end of {latest_year}"
-            )
-        
-        with col2:
-            st.metric(
-                "Current TFSA Balance",
-                f"${latest_tfsa_balance:,.0f}",
-                delta=f"{total_tfsa_all:,.0f} lifetime contrib",
-                help=f"Projected balance as of end of {latest_year}"
-            )
-        
-        with col3:
-            st.metric(
-                "Total Tax Shield Value",
-                f"${total_tax_shield:,.0f}",
-                help="Cumulative tax refunds generated from RRSP contributions"
-            )
-        
-        with col4:
-            st.metric(
-                "Total Portfolio Value",
-                f"${latest_rrsp_balance + latest_tfsa_balance:,.0f}",
-                delta=f"+${(latest_rrsp_balance + latest_tfsa_balance) - (total_rrsp_all + total_tfsa_all):,.0f} growth",
-                help="Combined RRSP + TFSA current value"
-            )
-        
-        st.divider()
-        
-        # Multi-Year Portfolio Growth Chart
-        st.markdown("### 📈 Portfolio Growth Over Time")
-        
-        portfolio_history = []
-        
-        for yr in sorted(all_history.keys(), key=lambda x: int(x)):
-            data = all_history[yr]
-            
-            t4_gross = data.get('t4_gross_income', 0)
-            other_inc = data.get('other_income', 0)
-            total_gross = t4_gross + other_inc
-            
-            target_cagr = data.get("target_cagr", 7.0) / 100
-            rrsp_start = data.get("rrsp_balance_start", 0)
-            tfsa_start = data.get("tfsa_balance_start", 0)
-            
-            annual_rrsp = (data.get('base_salary', 0) * 
-                          (data.get('biweekly_pct', 0) + data.get('employer_match', 0)) / 100) + \
-                          data.get('rrsp_lump_sum_optimization', 0) + \
-                          data.get('rrsp_lump_sum_additional', 0) + \
-                          data.get('rrsp_lump_sum', 0)  # Legacy
-            tfsa_contrib = data.get('tfsa_lump_sum', 0)
-            
-            # Start of year
-            portfolio_history.append({
-                "Year": f"{yr} (Jan)",
-                "RRSP Balance": rrsp_start,
-                "TFSA Balance": tfsa_start,
-                "Total": rrsp_start + tfsa_start
-            })
-            
-            # End of year (with growth and contributions)
-            rrsp_growth = rrsp_start * target_cagr + annual_rrsp * (target_cagr / 2)
-            tfsa_growth = tfsa_start * target_cagr + tfsa_contrib * (target_cagr / 2)
-            
-            rrsp_end = rrsp_start + rrsp_growth + annual_rrsp
-            tfsa_end = tfsa_start + tfsa_growth + tfsa_contrib
-            
-            portfolio_history.append({
-                "Year": f"{yr} (Dec)",
-                "RRSP Balance": rrsp_end,
-                "TFSA Balance": tfsa_end,
-                "Total": rrsp_end + tfsa_end
-            })
-        
-        if portfolio_history:
-            df_portfolio = pd.DataFrame(portfolio_history)
-            
-            # Stacked area chart for portfolio composition
-            portfolio_melted = df_portfolio[['Year', 'RRSP Balance', 'TFSA Balance']].melt(
-                'Year',
-                var_name='Account',
-                value_name='Balance'
-            )
-            
-            portfolio_chart = alt.Chart(portfolio_melted).mark_area(
-                opacity=0.8,
-                line=True
-            ).encode(
-                x=alt.X('Year:N', title='Timeline', axis=alt.Axis(labelAngle=-45)),
-                y=alt.Y('Balance:Q', title='Portfolio Value ($)', stack='zero'),
-                color=alt.Color('Account:N',
-                    scale=alt.Scale(
-                        domain=['RRSP Balance', 'TFSA Balance'],
-                        range=['#3b82f6', '#10b981']
-                    ),
-                    legend=alt.Legend(title="Account Type")
-                ),
-                tooltip=[
-                    alt.Tooltip('Year:N', title='Period'),
-                    alt.Tooltip('Account:N', title='Account'),
-                    alt.Tooltip('Balance:Q', title='Balance', format='$,.0f')
-                ]
-            ).properties(height=400)
-            
-            st.altair_chart(portfolio_chart, use_container_width=True)
-            
-            # Summary stats
-            col_stats1, col_stats2, col_stats3 = st.columns(3)
-            
-            first_total = df_portfolio.iloc[0]['Total']
-            last_total = df_portfolio.iloc[-1]['Total']
-            total_return = last_total - first_total
-            total_return_pct = (total_return / max(1, first_total)) * 100
-            
-            with col_stats1:
-                st.metric(
-                    "Total Growth",
-                    f"${total_return:,.0f}",
-                    delta=f"+{total_return_pct:.1f}%"
-                )
-            
-            with col_stats2:
-                years_tracked = len(all_history)
-                annualized_return = ((last_total / max(1, first_total)) ** (1 / max(1, years_tracked)) - 1) * 100 if first_total > 0 else 0
-                st.metric(
-                    "Annualized Return",
-                    f"{annualized_return:.2f}%",
-                    help="Compound annual growth rate across tracked years"
-                )
-            
-            with col_stats3:
-                st.metric(
-                    "Years Tracked",
-                    f"{years_tracked}",
-                    help="Number of years with saved data"
-                )
-        
-        st.divider()
-    
-    # Planning Years Grid
-    st.markdown("### 📅 Planning Years")
-    
-    # Status Legend
-    st.markdown("""
-        <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-            <strong>Status Guide:</strong>
-            <span style="margin-left: 20px;">🔴 <strong>Empty</strong> - No data saved</span>
-            <span style="margin-left: 20px;">🟠 <strong>In Progress</strong> - Taxable income ≥ $181,440 (Penthouse exposure)</span>
-            <span style="margin-left: 20px;">🟢 <strong>Optimized</strong> - Taxable income < $181,440 (No Penthouse exposure)</span>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Add new year functionality - simple row
-    col_add1, col_add2, col_add3 = st.columns([2, 1, 1])
-    with col_add1:
-        new_year_input = st.number_input(
-            "Add Planning Year",
-            min_value=2020,
-            max_value=2050,
-            value=2031,
-            step=1,
-            key="new_year_input"
-        )
-    with col_add2:
-        if st.button("➕ Add Year", use_container_width=True):
-            if str(new_year_input) not in all_history:
-                # Create empty year entry
-                save_year_data(new_year_input, {
-                    "t4_gross_income": 0,
-                    "other_income": 0,
-                    "base_salary": 0,
-                    "biweekly_pct": 0,
-                    "employer_match": 0,
-                    "rrsp_lump_sum_optimization": 0,
-                    "rrsp_lump_sum_additional": 0,
-                    "tfsa_lump_sum": 0,
-                    "rrsp_room": 0,
-                    "tfsa_room": 0,
-                    "rrsp_balance_start": 0,
-                    "tfsa_balance_start": 0,
-                    "target_cagr": 7.0
-                })
-                st.success(f"✓ Year {new_year_input} added!")
-                st.rerun()
-            else:
-                st.warning(f"Year {new_year_input} already exists!")
-    with col_add3:
-        st.write("")  # Spacer
-    
-    st.divider()
-    
-    # Get all years (saved + default range)
-    all_years = set(range(2024, 2031))
-    all_years.update([int(yr) for yr in all_history.keys()])
-    years_to_show = sorted(list(all_years))
-    
-    cols_per_row = 4
-    
-    for row_start in range(0, len(years_to_show), cols_per_row):
-        cols = st.columns(cols_per_row)
-        for i, yr in enumerate(years_to_show[row_start:row_start + cols_per_row]):
-            with cols[i]:
-                is_saved = str(yr) in all_history
-                is_optimized = is_year_optimized(all_history.get(str(yr), {})) if is_saved else False
-                
-                # Determine status and styling
-                if not is_saved:
-                    # Red - Empty
-                    status_emoji = "🔴"
-                    status_text = "Empty"
-                    button_label = f"📅 **{yr}**\n{status_emoji} {status_text}"
-                    container_style = "background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border: 2px solid #ef4444; border-radius: 12px; padding: 4px;"
-                elif is_optimized:
-                    # Green - Optimized
-                    data = all_history[str(yr)]
-                    annual_rrsp = (data.get('base_salary', 0) * 
-                                  (data.get('biweekly_pct', 0) + data.get('employer_match', 0)) / 100) + \
-                                  data.get('rrsp_lump_sum_optimization', 0) + \
-                                  data.get('rrsp_lump_sum_additional', 0) + \
-                                  data.get('rrsp_lump_sum', 0)
-                    status_emoji = "🟢"
-                    status_text = f"${annual_rrsp:,.0f}"
-                    button_label = f"📅 **{yr}**\n{status_text}\n{status_emoji} Optimized"
-                    container_style = "background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border: 2px solid #10b981; border-radius: 12px; padding: 4px;"
-                else:
-                    # Orange - In Progress
-                    data = all_history[str(yr)]
-                    annual_rrsp = (data.get('base_salary', 0) * 
-                                  (data.get('biweekly_pct', 0) + data.get('employer_match', 0)) / 100) + \
-                                  data.get('rrsp_lump_sum_optimization', 0) + \
-                                  data.get('rrsp_lump_sum_additional', 0) + \
-                                  data.get('rrsp_lump_sum', 0)
-                    status_emoji = "🟠"
-                    status_text = f"${annual_rrsp:,.0f}"
-                    button_label = f"📅 **{yr}**\n{status_text}\n{status_emoji} In Progress"
-                    container_style = "background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%); border: 2px solid #f97316; border-radius: 12px; padding: 4px;"
-                
-                # Wrap button in styled container
-                st.markdown(f'<div style="{container_style}">', unsafe_allow_html=True)
-                
-                # Create the button
-                if st.button(
-                    button_label,
-                    key=f"home_{yr}",
-                    use_container_width=True,
-                    type="primary" if is_saved else "secondary"
-                ):
-                    st.session_state.selected_year = yr
-                    st.session_state.current_page = "Year View"
-                    st.rerun()
-                
-                st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Multi-Year Analytics
-    if all_history and len(all_history) > 1:
-        st.divider()
-        st.markdown("### 📈 Multi-Year Analytics & Trends")
-        
-        # Prepare data for charts
-        chart_data = []
-        room_data = []
-        burndown_data = []
-        
-        for yr, data in sorted(all_history.items(), key=lambda x: x[0]):
-            t4_gross = data.get('t4_gross_income', 0)
-            other_inc = data.get('other_income', 0)
-            total_gross = t4_gross + other_inc
-            
-            annual_rrsp = (data.get('base_salary', 0) * 
-                          (data.get('biweekly_pct', 0) + data.get('employer_match', 0)) / 100) + \
-                          data.get('rrsp_lump_sum_optimization', 0) + \
-                          data.get('rrsp_lump_sum_additional', 0) + \
-                          data.get('rrsp_lump_sum', 0)  # Legacy support
-            tfsa_contrib = data.get('tfsa_lump_sum', 0)
-            gross = total_gross
-            
-            rrsp_room_avail = data.get('rrsp_room', 0)
-            tfsa_room_avail = data.get('tfsa_room', 0)
-            
-            chart_data.append({
-                "Year": yr,
-                "Gross Income": gross,
-                "Taxable Income": gross - annual_rrsp,
-                "Tax Shield": annual_rrsp,
-                "RRSP": annual_rrsp,
-                "TFSA": tfsa_contrib
-            })
-            
-            room_data.append({
-                "Year": yr,
-                "Account": "RRSP",
-                "Remaining Room": max(0, rrsp_room_avail - annual_rrsp)
-            })
-            room_data.append({
-                "Year": yr,
-                "Account": "TFSA",
-                "Remaining Room": max(0, tfsa_room_avail - tfsa_contrib)
-            })
-            
-            # Burndown data - showing used vs available
-            burndown_data.append({
-                "Year": yr,
-                "Account": "RRSP",
-                "Status": "Used",
-                "Amount": annual_rrsp
-            })
-            burndown_data.append({
-                "Year": yr,
-                "Account": "RRSP",
-                "Status": "Available",
-                "Amount": max(0, rrsp_room_avail - annual_rrsp)
-            })
-            burndown_data.append({
-                "Year": yr,
-                "Account": "TFSA",
-                "Status": "Used",
-                "Amount": tfsa_contrib
-            })
-            burndown_data.append({
-                "Year": yr,
-                "Account": "TFSA",
-                "Status": "Available",
-                "Amount": max(0, tfsa_room_avail - tfsa_contrib)
-            })
-        
-        df_chart = pd.DataFrame(chart_data)
-        df_room = pd.DataFrame(room_data)
-        df_burndown = pd.DataFrame(burndown_data)
-        
-        # RRSP & TFSA Burndown Charts
-        st.markdown("**Contribution Room Burndown Analysis**")
-        st.caption("See how much room you're using vs. leaving unused each year")
-        
-        col_burn1, col_burn2 = st.columns(2)
-        
-        with col_burn1:
-            st.markdown("**RRSP Room Utilization**")
-            
-            rrsp_burndown = df_burndown[df_burndown['Account'] == 'RRSP']
-            
-            rrsp_chart = alt.Chart(rrsp_burndown).mark_bar().encode(
-                x=alt.X('Year:N', title='Year'),
-                y=alt.Y('Amount:Q', title='RRSP Room ($)', stack='zero'),
-                color=alt.Color('Status:N',
-                    scale=alt.Scale(
-                        domain=['Used', 'Available'],
-                        range=['#10b981', '#e2e8f0']
-                    ),
-                    legend=alt.Legend(title="Room Status")
-                ),
-                tooltip=[
-                    alt.Tooltip('Year:N', title='Year'),
-                    alt.Tooltip('Status:N', title='Status'),
-                    alt.Tooltip('Amount:Q', title='Amount', format='$,.0f')
-                ]
-            ).properties(height=320)
-            
-            st.altair_chart(rrsp_chart, use_container_width=True)
-            
-            # Calculate average utilization
-            total_used = rrsp_burndown[rrsp_burndown['Status'] == 'Used']['Amount'].sum()
-            total_available = rrsp_burndown['Amount'].sum()
-            utilization = (total_used / total_available * 100) if total_available > 0 else 0
-            st.metric("Avg RRSP Utilization", f"{utilization:.1f}%")
-        
-        with col_burn2:
-            st.markdown("**TFSA Room Utilization**")
-            
-            tfsa_burndown = df_burndown[df_burndown['Account'] == 'TFSA']
-            
-            tfsa_chart = alt.Chart(tfsa_burndown).mark_bar().encode(
-                x=alt.X('Year:N', title='Year'),
-                y=alt.Y('Amount:Q', title='TFSA Room ($)', stack='zero'),
-                color=alt.Color('Status:N',
-                    scale=alt.Scale(
-                        domain=['Used', 'Available'],
-                        range=['#3b82f6', '#e2e8f0']
-                    ),
-                    legend=alt.Legend(title="Room Status")
-                ),
-                tooltip=[
-                    alt.Tooltip('Year:N', title='Year'),
-                    alt.Tooltip('Status:N', title='Status'),
-                    alt.Tooltip('Amount:Q', title='Amount', format='$,.0f')
-                ]
-            ).properties(height=320)
-            
-            st.altair_chart(tfsa_chart, use_container_width=True)
-            
-            # Calculate average utilization
-            total_used = tfsa_burndown[tfsa_burndown['Status'] == 'Used']['Amount'].sum()
-            total_available = tfsa_burndown['Amount'].sum()
-            utilization = (total_used / total_available * 100) if total_available > 0 else 0
-            st.metric("Avg TFSA Utilization", f"{utilization:.1f}%")
-        
-        st.divider()
-        
-        col_left, col_right = st.columns(2)
-        
-        with col_left:
-            st.markdown("**Income vs. Tax-Shielded Income**")
-            
-            income_df = df_chart[['Year', 'Gross Income', 'Taxable Income']].melt(
-                'Year',
-                var_name='Category',
-                value_name='Amount'
-            )
-            
-            income_chart = alt.Chart(income_df).mark_bar(opacity=0.85).encode(
-                x=alt.X('Year:N', title='Year'),
-                y=alt.Y('Amount:Q', title='Income ($)'),
-                color=alt.Color('Category:N',
-                    scale=alt.Scale(
-                        domain=['Gross Income', 'Taxable Income'],
-                        range=['#94a3b8', '#3b82f6']
-                    ),
-                    legend=alt.Legend(title="Income Type")
-                ),
-                xOffset='Category:N'
-            ).properties(height=320)
-            
-            st.altair_chart(income_chart, use_container_width=True)
-        
-        with col_right:
-            st.markdown("**Remaining Room Trajectory**")
-            
-            room_chart = alt.Chart(df_room).mark_area(
-                opacity=0.7,
-                line=True
-            ).encode(
-                x=alt.X('Year:N', title='Year'),
-                y=alt.Y('Remaining Room:Q', title='Remaining Room ($)'),
-                color=alt.Color('Account:N',
-                    scale=alt.Scale(
-                        domain=['RRSP', 'TFSA'],
-                        range=['#3b82f6', '#10b981']
-                    ),
-                    legend=alt.Legend(title="Account")
-                )
-            ).properties(height=320)
-            
-            st.altair_chart(room_chart, use_container_width=True)
-        
-        # Contribution trends
-        st.markdown("**Annual Contribution Trends**")
-        
-        contrib_df = df_chart[['Year', 'RRSP', 'TFSA']].melt(
-            'Year',
-            var_name='Account',
-            value_name='Contribution'
-        )
-        
-        contrib_chart = alt.Chart(contrib_df).mark_line(
-            point=alt.OverlayMarkDef(filled=False, fill="white", size=80)
-        ).encode(
-            x=alt.X('Year:N', title='Year'),
-            y=alt.Y('Contribution:Q', title='Annual Contribution ($)'),
-            color=alt.Color('Account:N',
-                scale=alt.Scale(
-                    domain=['RRSP', 'TFSA'],
-                    range=['#3b82f6', '#10b981']
-                )
-            ),
-            strokeWidth=alt.value(3)
-        ).properties(height=300)
-        
-        st.altair_chart(contrib_chart, use_container_width=True)
-
-# --- 6. PAGE: YEAR VIEW ---
-else:
-    selected_year = st.session_state.selected_year
-    year_data = all_history.get(str(selected_year), {})
-
-    with st.sidebar:
-        if st.button("⬅️ Back to Home", use_container_width=True):
-            st.session_state.current_page = "Home"
-            st.rerun()
-        
-        st.header(f"⚙️ {selected_year} Parameters")
-        
-        with st.form(key="input_form"):
-            st.markdown("### 💵 Income Parameters")
-            
-            t4_gross_income = st.number_input(
-                "Annual T4 Gross Income",
-                value=float(year_data.get("t4_gross_income", 0)),
-                step=5000.0,
-                min_value=0.0,
-                help="Total employment income from Box 14 of your T4"
-            )
-            
-            other_income = st.number_input(
-                "Other Income",
-                value=float(year_data.get("other_income", 0)),
-                step=1000.0,
-                min_value=0.0,
-                help="Additional taxable income (e.g., rental property net income after expenses)"
-            )
-            
-            base_salary = st.number_input(
-                "Annual Base Salary",
-                value=float(year_data.get("base_salary", 0)),
-                step=5000.0,
-                min_value=0.0,
-                help="Core salary used for percentage-based contributions"
-            )
-            
-            st.caption(f"💰 Total Gross Income: ${t4_gross_income + other_income:,.0f}")
-            
-            st.markdown("### 🎯 RRSP Strategy")
-            
-            biweekly_pct = st.slider(
-                "Biweekly RRSP Contribution (%)",
-                0.0, 18.0,
-                value=float(year_data.get("biweekly_pct", 0.0)),
-                step=0.5,
-                help="Percentage deducted from each paycheck"
-            )
-            
-            employer_match = st.slider(
-                "Employer Match (%)",
-                0.0, 10.0,
-                value=float(year_data.get("employer_match", 0.0)),
-                step=0.5,
-                help="Employer contribution percentage (free money!)"
-            )
-            
-            rrsp_lump_sum_optimization = st.number_input(
-                "RRSP Lump Sum (Tax Optimization)",
-                value=float(year_data.get("rrsp_lump_sum_optimization", 0)),
-                step=1000.0,
-                min_value=0.0,
-                help="Strategic deposit to optimize tax bracket positioning"
-            )
-            
-            rrsp_lump_sum_additional = st.number_input(
-                "RRSP Lump Sum (Additional Refund)",
-                value=float(year_data.get("rrsp_lump_sum_additional", 0)),
-                step=1000.0,
-                min_value=0.0,
-                help="Extra contributions to maximize tax refund beyond optimization"
-            )
-            
-            st.caption(f"💰 Total RRSP Lump Sum: ${rrsp_lump_sum_optimization + rrsp_lump_sum_additional:,.0f}")
-            
-            st.markdown("### 🌱 TFSA Strategy")
-            
-            tfsa_lump_sum = st.number_input(
-                "TFSA Lump Sum Deposit",
-                value=float(year_data.get("tfsa_lump_sum", 0)),
-                step=1000.0,
-                min_value=0.0,
-                help="Tax-free savings account contribution"
-            )
-            
-            st.markdown("### 📋 CRA Contribution Limits")
-            
-            # Get default values from previous year if available
-            prev_year = str(selected_year - 1)
-            default_rrsp_room = 0.0
-            default_tfsa_room = 0.0
-            
-            if prev_year in all_history:
-                prev_data = all_history[prev_year]
-                
-                # Calculate remaining room from previous year
-                prev_annual_rrsp = (prev_data.get('base_salary', 0) * 
-                                   (prev_data.get('biweekly_pct', 0) + prev_data.get('employer_match', 0)) / 100) + \
-                                   prev_data.get('rrsp_lump_sum_optimization', 0) + \
-                                   prev_data.get('rrsp_lump_sum_additional', 0) + \
-                                   prev_data.get('rrsp_lump_sum', 0)  # Legacy
-                prev_tfsa_contrib = prev_data.get('tfsa_lump_sum', 0)
-                
-                prev_rrsp_room_remaining = max(0, prev_data.get('rrsp_room', 0) - prev_annual_rrsp)
-                prev_tfsa_room_remaining = max(0, prev_data.get('tfsa_room', 0) - prev_tfsa_contrib)
-                
-                # Add new room for current year (based on previous year's total gross income)
-                prev_t4_gross = prev_data.get('t4_gross_income', 0)
-                prev_other_income = prev_data.get('other_income', 0)
-                prev_total_gross = prev_t4_gross + prev_other_income
-                
-                new_rrsp_room = min(31560, prev_total_gross * 0.18)
-                new_tfsa_room = 7000
-                
-                default_rrsp_room = prev_rrsp_room_remaining + new_rrsp_room
-                default_tfsa_room = prev_tfsa_room_remaining + new_tfsa_room
-            
-            rrsp_room = st.number_input(
-                "Available RRSP Room",
-                value=float(year_data.get("rrsp_room", default_rrsp_room)),
-                step=1000.0,
-                min_value=0.0,
-                help="From your latest Notice of Assessment (auto-filled from previous year if available)"
-            )
-            
-            tfsa_room = st.number_input(
-                "Available TFSA Room",
-                value=float(year_data.get("tfsa_room", default_tfsa_room)),
-                step=1000.0,
-                min_value=0.0,
-                help="From CRA MyAccount (auto-filled from previous year if available)"
-            )
-            
-            if prev_year in all_history and default_rrsp_room > 0:
-                st.caption(f"ℹ️ Auto-calculated from {prev_year} carryover + new room")
-            
-            st.markdown("### 📈 Portfolio Tracking")
-            
-            # Calculate default values from previous year's end balances
-            prev_year = str(selected_year - 1)
-            default_rrsp_balance = 0.0
-            default_tfsa_balance = 0.0
-            
-            if prev_year in all_history:
-                prev_data = all_history[prev_year]
-                
-                # Get previous year's values
-                prev_target_cagr = prev_data.get("target_cagr", 7.0) / 100
-                prev_rrsp_start = prev_data.get("rrsp_balance_start", 0)
-                prev_tfsa_start = prev_data.get("tfsa_balance_start", 0)
-                
-                # Calculate previous year's contributions
-                prev_annual_rrsp = (prev_data.get('base_salary', 0) * 
-                                   (prev_data.get('biweekly_pct', 0) + prev_data.get('employer_match', 0)) / 100) + \
-                                   prev_data.get('rrsp_lump_sum_optimization', 0) + \
-                                   prev_data.get('rrsp_lump_sum_additional', 0) + \
-                                   prev_data.get('rrsp_lump_sum', 0)  # Legacy
-                prev_tfsa_contrib = prev_data.get('tfsa_lump_sum', 0)
-                
-                # Calculate previous year's growth
-                prev_rrsp_growth = prev_rrsp_start * prev_target_cagr + prev_annual_rrsp * (prev_target_cagr / 2)
-                prev_tfsa_growth = prev_tfsa_start * prev_target_cagr + prev_tfsa_contrib * (prev_target_cagr / 2)
-                
-                # End balances become start balances for current year
-                default_rrsp_balance = prev_rrsp_start + prev_rrsp_growth + prev_annual_rrsp
-                default_tfsa_balance = prev_tfsa_start + prev_tfsa_growth + prev_tfsa_contrib
-            
-            rrsp_balance_start = st.number_input(
-                "RRSP Balance (Start of Year)",
-                value=float(year_data.get("rrsp_balance_start", default_rrsp_balance)),
-                step=1000.0,
-                min_value=0.0,
-                help="Total RRSP portfolio value on January 1st (auto-calculated from previous year if available)"
-            )
-            
-            tfsa_balance_start = st.number_input(
-                "TFSA Balance (Start of Year)",
-                value=float(year_data.get("tfsa_balance_start", default_tfsa_balance)),
-                step=1000.0,
-                min_value=0.0,
-                help="Total TFSA portfolio value on January 1st (auto-calculated from previous year if available)"
-            )
-            
-            if prev_year in all_history and default_rrsp_balance > 0:
-                st.caption(f"ℹ️ Auto-calculated from {prev_year} end-of-year projected balances")
-            
-            target_cagr = st.slider(
-                "Target Annual Return (CAGR %)",
-                0.0, 50.0,
-                value=float(year_data.get("target_cagr", 7.0)),
-                step=0.5,
-                help="Expected compound annual growth rate for investments (0-50%)"
-            )
-            
-            st.caption(f"📊 Using {target_cagr}% CAGR for growth projections")
-            
-            st.divider()
-            
-            # Form submit buttons
-            col_save, col_reset = st.columns(2)
-            
-            with col_save:
-                submitted = st.form_submit_button(
-                    "💾 Save",
-                    use_container_width=True,
-                    type="primary"
-                )
-            
-            with col_reset:
-                reset = st.form_submit_button(
-                    "🔄 Reset",
-                    use_container_width=True
-                )
-            
-            if submitted:
-                success = save_year_data(selected_year, {
-                    "t4_gross_income": t4_gross_income,
-                    "other_income": other_income,
-                    "base_salary": base_salary,
-                    "biweekly_pct": biweekly_pct,
-                    "employer_match": employer_match,
-                    "rrsp_lump_sum_optimization": rrsp_lump_sum_optimization,
-                    "rrsp_lump_sum_additional": rrsp_lump_sum_additional,
-                    "tfsa_lump_sum": tfsa_lump_sum,
-                    "rrsp_room": rrsp_room,
-                    "tfsa_room": tfsa_room,
-                    "rrsp_balance_start": rrsp_balance_start,
-                    "tfsa_balance_start": tfsa_balance_start,
-                    "target_cagr": target_cagr
-                })
-                
-                if success:
-                    st.session_state.saved_flag = True
-                    st.rerun()
-            
-            if reset:
-                delete_year_data(selected_year)
-                st.rerun()
-        
-        if st.session_state.get("saved_flag"):
-            st.success("✓ Strategy saved successfully!")
-            st.session_state.saved_flag = False
-    
-    # Main content area - Calculations
-    other_income = year_data.get("other_income", 0)
-    total_gross_income = t4_gross_income + other_income
-    
-    annual_rrsp_periodic = base_salary * ((biweekly_pct + employer_match) / 100)
-    rrsp_lump_sum = rrsp_lump_sum_optimization + rrsp_lump_sum_additional
-    total_rrsp_contributions = annual_rrsp_periodic + rrsp_lump_sum
-    taxable_income = max(0, total_gross_income - total_rrsp_contributions)
-    
-    # Portfolio calculations
-    rrsp_balance_start = year_data.get("rrsp_balance_start", 0)
-    tfsa_balance_start = year_data.get("tfsa_balance_start", 0)
-    target_cagr
