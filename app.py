@@ -188,7 +188,11 @@ st.markdown("""
     }
     
     .year-tile-empty {
-        border-left: 4px solid #94a3b8;
+        border-left: 4px solid #ef4444;
+    }
+    
+    .year-tile-progress {
+        border-left: 4px solid #f97316;
     }
     
     .status-saved {
@@ -454,38 +458,43 @@ if st.session_state.current_page == "Home":
     # Planning Years Grid
     st.markdown("### 📅 Planning Years")
     
-    # Add new year functionality
-    col_years_header = st.columns([3, 1])
-    with col_years_header[1]:
-        with st.popover("➕ Add New Year"):
-            new_year = st.number_input(
-                "Year to add",
-                min_value=2020,
-                max_value=2050,
-                value=2026,
-                step=1
-            )
-            if st.button("Create Year", use_container_width=True):
-                if str(new_year) not in all_history:
-                    # Create empty year entry
-                    save_year_data(new_year, {
-                        "t4_gross_income": 0,
-                        "base_salary": 0,
-                        "biweekly_pct": 0,
-                        "employer_match": 0,
-                        "rrsp_lump_sum_optimization": 0,
-                        "rrsp_lump_sum_additional": 0,
-                        "tfsa_lump_sum": 0,
-                        "rrsp_room": 0,
-                        "tfsa_room": 0,
-                        "rrsp_balance_start": 0,
-                        "tfsa_balance_start": 0,
-                        "target_cagr": 7.0
-                    })
-                    st.success(f"Year {new_year} created!")
-                    st.rerun()
-                else:
-                    st.warning(f"Year {new_year} already exists!")
+    # Add new year functionality - simple row
+    col_add1, col_add2, col_add3 = st.columns([2, 1, 1])
+    with col_add1:
+        new_year_input = st.number_input(
+            "Add Planning Year",
+            min_value=2020,
+            max_value=2050,
+            value=2031,
+            step=1,
+            key="new_year_input"
+        )
+    with col_add2:
+        if st.button("➕ Add Year", use_container_width=True):
+            if str(new_year_input) not in all_history:
+                # Create empty year entry
+                save_year_data(new_year_input, {
+                    "t4_gross_income": 0,
+                    "base_salary": 0,
+                    "biweekly_pct": 0,
+                    "employer_match": 0,
+                    "rrsp_lump_sum_optimization": 0,
+                    "rrsp_lump_sum_additional": 0,
+                    "tfsa_lump_sum": 0,
+                    "rrsp_room": 0,
+                    "tfsa_room": 0,
+                    "rrsp_balance_start": 0,
+                    "tfsa_balance_start": 0,
+                    "target_cagr": 7.0
+                })
+                st.success(f"✓ Year {new_year_input} added!")
+                st.rerun()
+            else:
+                st.warning(f"Year {new_year_input} already exists!")
+    with col_add3:
+        st.write("")  # Spacer
+    
+    st.divider()
     
     # Get all years (saved + default range)
     all_years = set(range(2024, 2031))
@@ -501,31 +510,106 @@ if st.session_state.current_page == "Home":
                 is_saved = str(yr) in all_history
                 is_optimized = is_year_optimized(all_history.get(str(yr), {})) if is_saved else False
                 
-                if is_saved:
+                # Determine status and styling
+                if not is_saved:
+                    # Red - Empty
+                    status_emoji = "🔴"
+                    status_text = "Empty"
+                    button_html = f"""
+                        <button onclick="return false;" style="
+                            width: 100%;
+                            padding: 20px;
+                            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+                            border: 2px solid #ef4444;
+                            border-radius: 12px;
+                            cursor: pointer;
+                            transition: all 0.3s;
+                            box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);
+                        ">
+                            <div style="font-size: 1.2em; font-weight: 600; color: #991b1b;">
+                                📅 {yr}
+                            </div>
+                            <div style="margin-top: 8px; color: #b91c1c; font-weight: 500;">
+                                {status_emoji} {status_text}
+                            </div>
+                        </button>
+                    """
+                elif is_optimized:
+                    # Green - Optimized
                     data = all_history[str(yr)]
                     annual_rrsp = (data.get('base_salary', 0) * 
                                   (data.get('biweekly_pct', 0) + data.get('employer_match', 0)) / 100) + \
                                   data.get('rrsp_lump_sum_optimization', 0) + \
                                   data.get('rrsp_lump_sum_additional', 0) + \
                                   data.get('rrsp_lump_sum', 0)
-                    
-                    if is_optimized:
-                        status = f"✅ ${annual_rrsp:,.0f}"
-                        button_label = f"📅 **{yr}**\n{status}\n🟢 Optimized"
-                        button_type = "primary"
-                    else:
-                        status = f"💰 ${annual_rrsp:,.0f}"
-                        button_label = f"📅 **{yr}**\n{status}"
-                        button_type = "primary"
+                    status_emoji = "🟢"
+                    status_text = f"${annual_rrsp:,.0f}"
+                    status_label = "Optimized"
+                    button_html = f"""
+                        <button onclick="return false;" style="
+                            width: 100%;
+                            padding: 20px;
+                            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+                            border: 2px solid #10b981;
+                            border-radius: 12px;
+                            cursor: pointer;
+                            transition: all 0.3s;
+                            box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+                        ">
+                            <div style="font-size: 1.2em; font-weight: 600; color: #065f46;">
+                                📅 {yr}
+                            </div>
+                            <div style="margin-top: 8px; color: #047857; font-weight: 600;">
+                                {status_text}
+                            </div>
+                            <div style="margin-top: 4px; color: #059669; font-size: 0.9em;">
+                                {status_emoji} {status_label}
+                            </div>
+                        </button>
+                    """
                 else:
-                    button_label = f"📅 **{yr}**\nEmpty"
-                    button_type = "secondary"
+                    # Orange - In Progress
+                    data = all_history[str(yr)]
+                    annual_rrsp = (data.get('base_salary', 0) * 
+                                  (data.get('biweekly_pct', 0) + data.get('employer_match', 0)) / 100) + \
+                                  data.get('rrsp_lump_sum_optimization', 0) + \
+                                  data.get('rrsp_lump_sum_additional', 0) + \
+                                  data.get('rrsp_lump_sum', 0)
+                    status_emoji = "🟠"
+                    status_text = f"${annual_rrsp:,.0f}"
+                    status_label = "In Progress"
+                    button_html = f"""
+                        <button onclick="return false;" style="
+                            width: 100%;
+                            padding: 20px;
+                            background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%);
+                            border: 2px solid #f97316;
+                            border-radius: 12px;
+                            cursor: pointer;
+                            transition: all 0.3s;
+                            box-shadow: 0 2px 4px rgba(249, 115, 22, 0.3);
+                        ">
+                            <div style="font-size: 1.2em; font-weight: 600; color: #7c2d12;">
+                                📅 {yr}
+                            </div>
+                            <div style="margin-top: 8px; color: #9a3412; font-weight: 600;">
+                                {status_text}
+                            </div>
+                            <div style="margin-top: 4px; color: #c2410c; font-size: 0.9em;">
+                                {status_emoji} {status_label}
+                            </div>
+                        </button>
+                    """
                 
+                # Render the styled button
+                st.markdown(button_html, unsafe_allow_html=True)
+                
+                # Overlay with actual clickable Streamlit button (invisible)
                 if st.button(
-                    button_label,
-                    use_container_width=True,
+                    f"year_{yr}",
                     key=f"home_{yr}",
-                    type=button_type
+                    use_container_width=True,
+                    label_visibility="hidden"
                 ):
                     st.session_state.selected_year = yr
                     st.session_state.current_page = "Year View"
