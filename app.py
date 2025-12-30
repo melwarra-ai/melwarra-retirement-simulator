@@ -515,25 +515,8 @@ if st.session_state.current_page == "Home":
                     # Red - Empty
                     status_emoji = "🔴"
                     status_text = "Empty"
-                    button_html = f"""
-                        <button onclick="return false;" style="
-                            width: 100%;
-                            padding: 20px;
-                            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-                            border: 2px solid #ef4444;
-                            border-radius: 12px;
-                            cursor: pointer;
-                            transition: all 0.3s;
-                            box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);
-                        ">
-                            <div style="font-size: 1.2em; font-weight: 600; color: #991b1b;">
-                                📅 {yr}
-                            </div>
-                            <div style="margin-top: 8px; color: #b91c1c; font-weight: 500;">
-                                {status_emoji} {status_text}
-                            </div>
-                        </button>
-                    """
+                    button_label = f"📅 **{yr}**\n{status_emoji} {status_text}"
+                    container_style = "background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border: 2px solid #ef4444; border-radius: 12px; padding: 4px;"
                 elif is_optimized:
                     # Green - Optimized
                     data = all_history[str(yr)]
@@ -544,29 +527,8 @@ if st.session_state.current_page == "Home":
                                   data.get('rrsp_lump_sum', 0)
                     status_emoji = "🟢"
                     status_text = f"${annual_rrsp:,.0f}"
-                    status_label = "Optimized"
-                    button_html = f"""
-                        <button onclick="return false;" style="
-                            width: 100%;
-                            padding: 20px;
-                            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
-                            border: 2px solid #10b981;
-                            border-radius: 12px;
-                            cursor: pointer;
-                            transition: all 0.3s;
-                            box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
-                        ">
-                            <div style="font-size: 1.2em; font-weight: 600; color: #065f46;">
-                                📅 {yr}
-                            </div>
-                            <div style="margin-top: 8px; color: #047857; font-weight: 600;">
-                                {status_text}
-                            </div>
-                            <div style="margin-top: 4px; color: #059669; font-size: 0.9em;">
-                                {status_emoji} {status_label}
-                            </div>
-                        </button>
-                    """
+                    button_label = f"📅 **{yr}**\n{status_text}\n{status_emoji} Optimized"
+                    container_style = "background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border: 2px solid #10b981; border-radius: 12px; padding: 4px;"
                 else:
                     # Orange - In Progress
                     data = all_history[str(yr)]
@@ -577,43 +539,24 @@ if st.session_state.current_page == "Home":
                                   data.get('rrsp_lump_sum', 0)
                     status_emoji = "🟠"
                     status_text = f"${annual_rrsp:,.0f}"
-                    status_label = "In Progress"
-                    button_html = f"""
-                        <button onclick="return false;" style="
-                            width: 100%;
-                            padding: 20px;
-                            background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%);
-                            border: 2px solid #f97316;
-                            border-radius: 12px;
-                            cursor: pointer;
-                            transition: all 0.3s;
-                            box-shadow: 0 2px 4px rgba(249, 115, 22, 0.3);
-                        ">
-                            <div style="font-size: 1.2em; font-weight: 600; color: #7c2d12;">
-                                📅 {yr}
-                            </div>
-                            <div style="margin-top: 8px; color: #9a3412; font-weight: 600;">
-                                {status_text}
-                            </div>
-                            <div style="margin-top: 4px; color: #c2410c; font-size: 0.9em;">
-                                {status_emoji} {status_label}
-                            </div>
-                        </button>
-                    """
+                    button_label = f"📅 **{yr}**\n{status_text}\n{status_emoji} In Progress"
+                    container_style = "background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%); border: 2px solid #f97316; border-radius: 12px; padding: 4px;"
                 
-                # Render the styled button
-                st.markdown(button_html, unsafe_allow_html=True)
+                # Wrap button in styled container
+                st.markdown(f'<div style="{container_style}">', unsafe_allow_html=True)
                 
-                # Overlay with actual clickable Streamlit button (invisible)
+                # Create the button
                 if st.button(
-                    f"year_{yr}",
+                    button_label,
                     key=f"home_{yr}",
                     use_container_width=True,
-                    label_visibility="hidden"
+                    type="primary" if is_saved else "secondary"
                 ):
                     st.session_state.selected_year = yr
                     st.session_state.current_page = "Year View"
                     st.rerun()
+                
+                st.markdown('</div>', unsafe_allow_html=True)
     
     # Multi-Year Analytics
     if all_history and len(all_history) > 1:
