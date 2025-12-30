@@ -464,6 +464,16 @@ if st.session_state.current_page == "Home":
     # Planning Years Grid
     st.markdown("### 📅 Planning Years")
     
+    # Status Legend
+    st.markdown("""
+        <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <strong>Status Guide:</strong>
+            <span style="margin-left: 20px;">🔴 <strong>Empty</strong> - No data saved</span>
+            <span style="margin-left: 20px;">🟠 <strong>In Progress</strong> - Taxable income ≥ $181,440 (Penthouse exposure)</span>
+            <span style="margin-left: 20px;">🟢 <strong>Optimized</strong> - Taxable income < $181,440 (No Penthouse exposure)</span>
+        </div>
+    """, unsafe_allow_html=True)
+    
     # Add new year functionality - simple row
     col_add1, col_add2, col_add3 = st.columns([2, 1, 1])
     with col_add1:
@@ -1051,20 +1061,66 @@ else:
     estimated_refund = calculate_tax_refund(total_gross_income, total_rrsp_contributions)
     marginal_rate = get_marginal_rate(total_gross_income)
     
+    # Optimization status
+    penthouse_threshold = 181440
+    is_optimized = taxable_income < penthouse_threshold
+    
     # Header
     st.title(f"🏛️ Tax Optimization Strategy: {selected_year}")
     
-    description_box(
-        "Strategic Execution Framework",
-        f"Follow this comprehensive plan to maximize your tax efficiency and wealth velocity for {selected_year}. "
-        "Each section provides actionable insights to optimize your contribution strategy."
-    )
+    # Status Card
+    col_status1, col_status2 = st.columns([3, 1])
+    
+    with col_status1:
+        description_box(
+            "Strategic Execution Framework",
+            f"Follow this comprehensive plan to maximize your tax efficiency and wealth velocity for {selected_year}. "
+            "Each section provides actionable insights to optimize your contribution strategy."
+        )
+    
+    with col_status2:
+        if is_optimized:
+            st.markdown("""
+                <div style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); 
+                     padding: 20px; border-radius: 12px; border: 2px solid #10b981; text-align: center;">
+                    <div style="font-size: 3em;">🟢</div>
+                    <div style="font-size: 1.2em; font-weight: 600; color: #065f46; margin-top: 10px;">
+                        OPTIMIZED
+                    </div>
+                    <div style="font-size: 0.9em; color: #047857; margin-top: 5px;">
+                        This year will show GREEN
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+                <div style="background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%); 
+                     padding: 20px; border-radius: 12px; border: 2px solid #f97316; text-align: center;">
+                    <div style="font-size: 3em;">🟠</div>
+                    <div style="font-size: 1.2em; font-weight: 600; color: #7c2d12; margin-top: 10px;">
+                        IN PROGRESS
+                    </div>
+                    <div style="font-size: 0.9em; color: #9a3412; margin-top: 5px;">
+                        More RRSP needed
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
     
     # Key Metrics Dashboard
     st.markdown("### 📊 Strategic Overview")
     
     if other_income > 0:
         st.info(f"💼 Income Breakdown: T4 ${t4_gross_income:,.0f} + Other ${other_income:,.0f} = Total ${total_gross_income:,.0f}")
+    
+    # Optimization Status Banner
+    
+    if is_optimized:
+        st.success(f"🟢 **OPTIMIZED** - Your taxable income (${taxable_income:,.0f}) is below the Penthouse threshold (${penthouse_threshold:,.0f}). This year will show GREEN on the home page.")
+    else:
+        deficit = taxable_income - penthouse_threshold
+        additional_rrsp_needed = deficit
+        st.warning(f"🟠 **IN PROGRESS** - Your taxable income (${taxable_income:,.0f}) exceeds the Penthouse threshold by ${deficit:,.0f}. "
+                  f"Add ${additional_rrsp_needed:,.0f} more to RRSP contributions to achieve GREEN optimization status and save ${deficit * 0.4797:,.0f} in taxes.")
     
     col1, col2, col3, col4, col5 = st.columns(5)
     
@@ -1276,7 +1332,7 @@ else:
     st.markdown("### 🎯 Strategic Prioritization Matrix")
     
     penthouse_threshold = 181440
-    penthouse_income = max(0, taxable_income - penthouse_threshold)
+        penthouse_income = max(0, taxable_income - penthouse_threshold)
     penthouse_shield_needed = max(0, total_gross_income - penthouse_threshold - total_rrsp_contributions)
     
     remaining_rrsp_room = max(0, rrsp_room - total_rrsp_contributions)
@@ -1285,14 +1341,24 @@ else:
     # Priority 1: Penthouse Shield
     if penthouse_income > 0:
         priority_1_status = f"⚠️ ${penthouse_income:,.0f} in Penthouse"
-        priority_1_action = f"Deposit ${penthouse_shield_needed:,.0f} to RRSP"
+        priority_1_action = f"Increase RRSP by ${penthouse_shield_needed:,.0f}"
         priority_1_impact = f"Save ${penthouse_income * 0.4797:,.0f} in taxes (47.97% rate)"
         priority_1_class = "priority-high"
+        
+        # Show progress bar
+        optimization_progress = min(1.0, (penthouse_threshold / max(1, taxable_income)))
+        st.markdown("**Optimization Progress:**")
+        st.progress(optimization_progress)
+        st.caption(f"{optimization_progress*100:.1f}% optimized - Need to reduce taxable income by ${penthouse_income:,.0f}")
     else:
         priority_1_status = "✅ Optimized"
         priority_1_action = "No Penthouse exposure"
         priority_1_impact = f"Maximum efficiency at {marginal_rate*100:.2f}% bracket"
         priority_1_class = "priority-medium"
+        
+        st.markdown("**Optimization Progress:**")
+        st.progress(1.0)
+        st.caption("✅ 100% optimized - Below Penthouse threshold!")
     
     st.markdown(f'''
         <div class="premium-card {priority_1_class}">
