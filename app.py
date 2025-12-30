@@ -90,6 +90,28 @@ def get_marginal_rate(income):
     
     return TAX_BRACKETS[-1]['rate']
 
+def is_year_optimized(year_data):
+    """Check if a year is optimized (minimizing penthouse exposure)"""
+    if not year_data:
+        return False
+    
+    # Calculate values
+    t4_gross = year_data.get('t4_gross_income', 0)
+    base_salary = year_data.get('base_salary', 0)
+    biweekly_pct = year_data.get('biweekly_pct', 0)
+    employer_match = year_data.get('employer_match', 0)
+    rrsp_opt = year_data.get('rrsp_lump_sum_optimization', 0)
+    rrsp_add = year_data.get('rrsp_lump_sum_additional', 0)
+    rrsp_legacy = year_data.get('rrsp_lump_sum', 0)
+    
+    annual_rrsp_periodic = base_salary * ((biweekly_pct + employer_match) / 100)
+    total_rrsp = annual_rrsp_periodic + rrsp_opt + rrsp_add + rrsp_legacy
+    taxable_income = max(0, t4_gross - total_rrsp)
+    
+    # Optimized if no penthouse exposure (taxable income under $181,440)
+    penthouse_threshold = 181440
+    return taxable_income < penthouse_threshold
+
 # --- 3. CONFIGURATION & STYLING ---
 st.set_page_config(
     page_title="Tax & Wealth Velocity Suite",
@@ -249,11 +271,19 @@ if st.session_state.current_page == "Home":
         total_rrsp_all = 0
         total_tfsa_all = 0
         total_tax_shield = 0
+        latest_rrsp_balance = 0
+        latest_tfsa_balance = 0
+        
+        # Get the latest year's ending balance
+        latest_year = max(all_history.keys(), key=lambda x: int(x))
+        latest_data = all_history[latest_year]
         
         for yr, data in all_history.items():
             annual_rrsp = (data.get('base_salary', 0) * 
                           (data.get('biweekly_pct', 0) + data.get('employer_match', 0)) / 100) + \
-                          data.get('rrsp_lump_sum', 0)
+                          data.get('rrsp_lump_sum_optimization', 0) + \
+                          data.get('rrsp_lump_sum_additional', 0) + \
+                          data.get('rrsp_lump_sum', 0)  # Legacy support
             tfsa_contrib = data.get('tfsa_lump_sum', 0)
             
             total_rrsp_all += annual_rrsp
@@ -263,43 +293,205 @@ if st.session_state.current_page == "Home":
             refund = calculate_tax_refund(data.get('t4_gross_income', 0), annual_rrsp)
             total_tax_shield += refund
         
+        # Get projected balances from latest year
+        if latest_data:
+            target_cagr = latest_data.get("target_cagr", 7.0) / 100
+            rrsp_start = latest_data.get("rrsp_balance_start", 0)
+            tfsa_start = latest_data.get("tfsa_balance_start", 0)
+            
+            annual_rrsp = (latest_data.get('base_salary', 0) * 
+                          (latest_data.get('biweekly_pct', 0) + latest_data.get('employer_match', 0)) / 100) + \
+                          latest_data.get('rrsp_lump_sum', 0)
+            tfsa_contrib = latest_data.get('tfsa_lump_sum', 0)
+            
+            rrsp_growth = rrsp_start * target_cagr + annual_rrsp * (target_cagr / 2)
+            tfsa_growth = tfsa_start * target_cagr + tfsa_contrib * (target_cagr / 2)
+            
+            latest_rrsp_balance = rrsp_start + rrsp_growth + annual_rrsp
+            latest_tfsa_balance = tfsa_start + tfsa_growth + tfsa_contrib
+        
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             st.metric(
-                "Total RRSP Contributions",
-                f"${total_rrsp_all:,.0f}",
-                help="Cumulative RRSP across all saved years"
+                "Current RRSP Balance",
+                f"${latest_rrsp_balance:,.0f}",
+                delta=f"{total_rrsp_all:,.0f} lifetime contrib",
+                help=f"Projected balance as of end of {latest_year}"
             )
         
         with col2:
             st.metric(
-                "Total TFSA Contributions",
-                f"${total_tfsa_all:,.0f}",
-                help="Cumulative TFSA across all saved years"
+                "Current TFSA Balance",
+                f"${latest_tfsa_balance:,.0f}",
+                delta=f"{total_tfsa_all:,.0f} lifetime contrib",
+                help=f"Projected balance as of end of {latest_year}"
             )
         
         with col3:
             st.metric(
                 "Total Tax Shield Value",
                 f"${total_tax_shield:,.0f}",
-                help="Total tax refunds generated from RRSP contributions"
+                help="Cumulative tax refunds generated from RRSP contributions"
             )
         
         with col4:
             st.metric(
-                "Combined Wealth Velocity",
-                f"${total_rrsp_all + total_tfsa_all:,.0f}",
-                delta=f"+${total_tax_shield:,.0f} shield",
-                help="Total contributions plus tax efficiency gains"
+                "Total Portfolio Value",
+                f"${latest_rrsp_balance + latest_tfsa_balance:,.0f}",
+                delta=f"+${(latest_rrsp_balance + latest_tfsa_balance) - (total_rrsp_all + total_tfsa_all):,.0f} growth",
+                help="Combined RRSP + TFSA current value"
             )
+        
+        st.divider()
+        
+        # Multi-Year Portfolio Growth Chart
+        st.markdown("### 📈 Portfolio Growth Over Time")
+        
+        portfolio_history = []
+        
+        for yr in sorted(all_history.keys(), key=lambda x: int(x)):
+            data = all_history[yr]
+            
+            target_cagr = data.get("target_cagr", 7.0) / 100
+            rrsp_start = data.get("rrsp_balance_start", 0)
+            tfsa_start = data.get("tfsa_balance_start", 0)
+            
+            annual_rrsp = (data.get('base_salary', 0) * 
+                          (data.get('biweekly_pct', 0) + data.get('employer_match', 0)) / 100) + \
+                          data.get('rrsp_lump_sum_optimization', 0) + \
+                          data.get('rrsp_lump_sum_additional', 0) + \
+                          data.get('rrsp_lump_sum', 0)  # Legacy support
+            tfsa_contrib = data.get('tfsa_lump_sum', 0)
+            
+            # Start of year
+            portfolio_history.append({
+                "Year": f"{yr} (Jan)",
+                "RRSP Balance": rrsp_start,
+                "TFSA Balance": tfsa_start,
+                "Total": rrsp_start + tfsa_start
+            })
+            
+            # End of year (with growth and contributions)
+            rrsp_growth = rrsp_start * target_cagr + annual_rrsp * (target_cagr / 2)
+            tfsa_growth = tfsa_start * target_cagr + tfsa_contrib * (target_cagr / 2)
+            
+            rrsp_end = rrsp_start + rrsp_growth + annual_rrsp
+            tfsa_end = tfsa_start + tfsa_growth + tfsa_contrib
+            
+            portfolio_history.append({
+                "Year": f"{yr} (Dec)",
+                "RRSP Balance": rrsp_end,
+                "TFSA Balance": tfsa_end,
+                "Total": rrsp_end + tfsa_end
+            })
+        
+        if portfolio_history:
+            df_portfolio = pd.DataFrame(portfolio_history)
+            
+            # Stacked area chart for portfolio composition
+            portfolio_melted = df_portfolio[['Year', 'RRSP Balance', 'TFSA Balance']].melt(
+                'Year',
+                var_name='Account',
+                value_name='Balance'
+            )
+            
+            portfolio_chart = alt.Chart(portfolio_melted).mark_area(
+                opacity=0.8,
+                line=True
+            ).encode(
+                x=alt.X('Year:N', title='Timeline', axis=alt.Axis(labelAngle=-45)),
+                y=alt.Y('Balance:Q', title='Portfolio Value ($)', stack='zero'),
+                color=alt.Color('Account:N',
+                    scale=alt.Scale(
+                        domain=['RRSP Balance', 'TFSA Balance'],
+                        range=['#3b82f6', '#10b981']
+                    ),
+                    legend=alt.Legend(title="Account Type")
+                ),
+                tooltip=[
+                    alt.Tooltip('Year:N', title='Period'),
+                    alt.Tooltip('Account:N', title='Account'),
+                    alt.Tooltip('Balance:Q', title='Balance', format='$,.0f')
+                ]
+            ).properties(height=400)
+            
+            st.altair_chart(portfolio_chart, use_container_width=True)
+            
+            # Summary stats
+            col_stats1, col_stats2, col_stats3 = st.columns(3)
+            
+            first_total = df_portfolio.iloc[0]['Total']
+            last_total = df_portfolio.iloc[-1]['Total']
+            total_return = last_total - first_total
+            total_return_pct = (total_return / max(1, first_total)) * 100
+            
+            with col_stats1:
+                st.metric(
+                    "Total Growth",
+                    f"${total_return:,.0f}",
+                    delta=f"+{total_return_pct:.1f}%"
+                )
+            
+            with col_stats2:
+                years_tracked = len(all_history)
+                annualized_return = ((last_total / max(1, first_total)) ** (1 / max(1, years_tracked)) - 1) * 100 if first_total > 0 else 0
+                st.metric(
+                    "Annualized Return",
+                    f"{annualized_return:.2f}%",
+                    help="Compound annual growth rate across tracked years"
+                )
+            
+            with col_stats3:
+                st.metric(
+                    "Years Tracked",
+                    f"{years_tracked}",
+                    help="Number of years with saved data"
+                )
         
         st.divider()
     
     # Planning Years Grid
     st.markdown("### 📅 Planning Years")
     
-    years_to_show = list(range(2024, 2031))
+    # Add new year functionality
+    col_years_header = st.columns([3, 1])
+    with col_years_header[1]:
+        with st.popover("➕ Add New Year"):
+            new_year = st.number_input(
+                "Year to add",
+                min_value=2020,
+                max_value=2050,
+                value=2026,
+                step=1
+            )
+            if st.button("Create Year", use_container_width=True):
+                if str(new_year) not in all_history:
+                    # Create empty year entry
+                    save_year_data(new_year, {
+                        "t4_gross_income": 0,
+                        "base_salary": 0,
+                        "biweekly_pct": 0,
+                        "employer_match": 0,
+                        "rrsp_lump_sum_optimization": 0,
+                        "rrsp_lump_sum_additional": 0,
+                        "tfsa_lump_sum": 0,
+                        "rrsp_room": 0,
+                        "tfsa_room": 0,
+                        "rrsp_balance_start": 0,
+                        "tfsa_balance_start": 0,
+                        "target_cagr": 7.0
+                    })
+                    st.success(f"Year {new_year} created!")
+                    st.rerun()
+                else:
+                    st.warning(f"Year {new_year} already exists!")
+    
+    # Get all years (saved + default range)
+    all_years = set(range(2024, 2031))
+    all_years.update([int(yr) for yr in all_history.keys()])
+    years_to_show = sorted(list(all_years))
+    
     cols_per_row = 4
     
     for row_start in range(0, len(years_to_show), cols_per_row):
@@ -307,20 +499,30 @@ if st.session_state.current_page == "Home":
         for i, yr in enumerate(years_to_show[row_start:row_start + cols_per_row]):
             with cols[i]:
                 is_saved = str(yr) in all_history
+                is_optimized = is_year_optimized(all_history.get(str(yr), {})) if is_saved else False
                 
                 if is_saved:
                     data = all_history[str(yr)]
                     annual_rrsp = (data.get('base_salary', 0) * 
                                   (data.get('biweekly_pct', 0) + data.get('employer_match', 0)) / 100) + \
+                                  data.get('rrsp_lump_sum_optimization', 0) + \
+                                  data.get('rrsp_lump_sum_additional', 0) + \
                                   data.get('rrsp_lump_sum', 0)
-                    status = f"💰 ${annual_rrsp:,.0f}"
-                    button_type = "primary"
+                    
+                    if is_optimized:
+                        status = f"✅ ${annual_rrsp:,.0f}"
+                        button_label = f"📅 **{yr}**\n{status}\n🟢 Optimized"
+                        button_type = "primary"
+                    else:
+                        status = f"💰 ${annual_rrsp:,.0f}"
+                        button_label = f"📅 **{yr}**\n{status}"
+                        button_type = "primary"
                 else:
-                    status = "Empty"
+                    button_label = f"📅 **{yr}**\nEmpty"
                     button_type = "secondary"
                 
                 if st.button(
-                    f"📅 **{yr}**\n{status}",
+                    button_label,
                     use_container_width=True,
                     key=f"home_{yr}",
                     type=button_type
@@ -342,7 +544,9 @@ if st.session_state.current_page == "Home":
         for yr, data in sorted(all_history.items(), key=lambda x: x[0]):
             annual_rrsp = (data.get('base_salary', 0) * 
                           (data.get('biweekly_pct', 0) + data.get('employer_match', 0)) / 100) + \
-                          data.get('rrsp_lump_sum', 0)
+                          data.get('rrsp_lump_sum_optimization', 0) + \
+                          data.get('rrsp_lump_sum_additional', 0) + \
+                          data.get('rrsp_lump_sum', 0)  # Legacy support
             tfsa_contrib = data.get('tfsa_lump_sum', 0)
             gross = data.get('t4_gross_income', 0)
             
@@ -588,13 +792,23 @@ else:
                 help="Employer contribution percentage (free money!)"
             )
             
-            rrsp_lump_sum = st.number_input(
-                "RRSP Lump Sum Deposit",
-                value=float(year_data.get("rrsp_lump_sum", 0)),
+            rrsp_lump_sum_optimization = st.number_input(
+                "RRSP Lump Sum (Tax Optimization)",
+                value=float(year_data.get("rrsp_lump_sum_optimization", 0)),
                 step=1000.0,
                 min_value=0.0,
-                help="One-time deposit before March 1st deadline"
+                help="Strategic deposit to optimize tax bracket positioning"
             )
+            
+            rrsp_lump_sum_additional = st.number_input(
+                "RRSP Lump Sum (Additional Refund)",
+                value=float(year_data.get("rrsp_lump_sum_additional", 0)),
+                step=1000.0,
+                min_value=0.0,
+                help="Extra contributions to maximize tax refund beyond optimization"
+            )
+            
+            st.caption(f"💰 Total RRSP Lump Sum: ${rrsp_lump_sum_optimization + rrsp_lump_sum_additional:,.0f}")
             
             st.markdown("### 🌱 TFSA Strategy")
             
@@ -608,46 +822,106 @@ else:
             
             st.markdown("### 📋 CRA Contribution Limits")
             
+            # Get default values from previous year if available
+            prev_year = str(selected_year - 1)
+            default_rrsp_room = 0.0
+            default_tfsa_room = 0.0
+            
+            if prev_year in all_history:
+                prev_data = all_history[prev_year]
+                
+                # Calculate remaining room from previous year
+                prev_annual_rrsp = (prev_data.get('base_salary', 0) * 
+                                   (prev_data.get('biweekly_pct', 0) + prev_data.get('employer_match', 0)) / 100) + \
+                                   prev_data.get('rrsp_lump_sum_optimization', 0) + \
+                                   prev_data.get('rrsp_lump_sum_additional', 0)
+                prev_tfsa_contrib = prev_data.get('tfsa_lump_sum', 0)
+                
+                prev_rrsp_room_remaining = max(0, prev_data.get('rrsp_room', 0) - prev_annual_rrsp)
+                prev_tfsa_room_remaining = max(0, prev_data.get('tfsa_room', 0) - prev_tfsa_contrib)
+                
+                # Add new room for current year
+                new_rrsp_room = min(31560, prev_data.get('t4_gross_income', 0) * 0.18)
+                new_tfsa_room = 7000
+                
+                default_rrsp_room = prev_rrsp_room_remaining + new_rrsp_room
+                default_tfsa_room = prev_tfsa_room_remaining + new_tfsa_room
+            
             rrsp_room = st.number_input(
                 "Available RRSP Room",
-                value=float(year_data.get("rrsp_room", 0)),
+                value=float(year_data.get("rrsp_room", default_rrsp_room)),
                 step=1000.0,
                 min_value=0.0,
-                help="From your latest Notice of Assessment"
+                help="From your latest Notice of Assessment (auto-filled from previous year if available)"
             )
             
             tfsa_room = st.number_input(
                 "Available TFSA Room",
-                value=float(year_data.get("tfsa_room", 0)),
+                value=float(year_data.get("tfsa_room", default_tfsa_room)),
                 step=1000.0,
                 min_value=0.0,
-                help="From CRA MyAccount"
+                help="From CRA MyAccount (auto-filled from previous year if available)"
             )
+            
+            if prev_year in all_history and default_rrsp_room > 0:
+                st.caption(f"ℹ️ Auto-calculated from {prev_year} carryover + new room")
             
             st.markdown("### 📈 Portfolio Tracking")
             
+            # Calculate default values from previous year's end balances
+            prev_year = str(selected_year - 1)
+            default_rrsp_balance = 0.0
+            default_tfsa_balance = 0.0
+            
+            if prev_year in all_history:
+                prev_data = all_history[prev_year]
+                
+                # Get previous year's values
+                prev_target_cagr = prev_data.get("target_cagr", 7.0) / 100
+                prev_rrsp_start = prev_data.get("rrsp_balance_start", 0)
+                prev_tfsa_start = prev_data.get("tfsa_balance_start", 0)
+                
+                # Calculate previous year's contributions
+                prev_annual_rrsp = (prev_data.get('base_salary', 0) * 
+                                   (prev_data.get('biweekly_pct', 0) + prev_data.get('employer_match', 0)) / 100) + \
+                                   prev_data.get('rrsp_lump_sum_optimization', 0) + \
+                                   prev_data.get('rrsp_lump_sum_additional', 0) + \
+                                   prev_data.get('rrsp_lump_sum', 0)  # Legacy
+                prev_tfsa_contrib = prev_data.get('tfsa_lump_sum', 0)
+                
+                # Calculate previous year's growth
+                prev_rrsp_growth = prev_rrsp_start * prev_target_cagr + prev_annual_rrsp * (prev_target_cagr / 2)
+                prev_tfsa_growth = prev_tfsa_start * prev_target_cagr + prev_tfsa_contrib * (prev_target_cagr / 2)
+                
+                # End balances become start balances for current year
+                default_rrsp_balance = prev_rrsp_start + prev_rrsp_growth + prev_annual_rrsp
+                default_tfsa_balance = prev_tfsa_start + prev_tfsa_growth + prev_tfsa_contrib
+            
             rrsp_balance_start = st.number_input(
                 "RRSP Balance (Start of Year)",
-                value=float(year_data.get("rrsp_balance_start", 0)),
+                value=float(year_data.get("rrsp_balance_start", default_rrsp_balance)),
                 step=1000.0,
                 min_value=0.0,
-                help="Total RRSP portfolio value on January 1st (before any new contributions)"
+                help="Total RRSP portfolio value on January 1st (auto-calculated from previous year if available)"
             )
             
             tfsa_balance_start = st.number_input(
                 "TFSA Balance (Start of Year)",
-                value=float(year_data.get("tfsa_balance_start", 0)),
+                value=float(year_data.get("tfsa_balance_start", default_tfsa_balance)),
                 step=1000.0,
                 min_value=0.0,
-                help="Total TFSA portfolio value on January 1st (before any new contributions)"
+                help="Total TFSA portfolio value on January 1st (auto-calculated from previous year if available)"
             )
+            
+            if prev_year in all_history and default_rrsp_balance > 0:
+                st.caption(f"ℹ️ Auto-calculated from {prev_year} end-of-year projected balances")
             
             target_cagr = st.slider(
                 "Target Annual Return (CAGR %)",
-                0.0, 15.0,
+                0.0, 50.0,
                 value=float(year_data.get("target_cagr", 7.0)),
                 step=0.5,
-                help="Expected compound annual growth rate for investments"
+                help="Expected compound annual growth rate for investments (0-50%)"
             )
             
             st.caption(f"📊 Using {target_cagr}% CAGR for growth projections")
@@ -676,7 +950,8 @@ else:
                     "base_salary": base_salary,
                     "biweekly_pct": biweekly_pct,
                     "employer_match": employer_match,
-                    "rrsp_lump_sum": rrsp_lump_sum,
+                    "rrsp_lump_sum_optimization": rrsp_lump_sum_optimization,
+                    "rrsp_lump_sum_additional": rrsp_lump_sum_additional,
                     "tfsa_lump_sum": tfsa_lump_sum,
                     "rrsp_room": rrsp_room,
                     "tfsa_room": tfsa_room,
@@ -699,6 +974,7 @@ else:
     
     # Main content area - Calculations
     annual_rrsp_periodic = base_salary * ((biweekly_pct + employer_match) / 100)
+    rrsp_lump_sum = rrsp_lump_sum_optimization + rrsp_lump_sum_additional
     total_rrsp_contributions = annual_rrsp_periodic + rrsp_lump_sum
     taxable_income = max(0, t4_gross_income - total_rrsp_contributions)
     
@@ -781,36 +1057,82 @@ else:
         st.divider()
         st.markdown("### 💼 Portfolio Growth Tracker")
         
-        col_port1, col_port2, col_port3 = st.columns(3)
+        description_box(
+            "Year-End Portfolio Projection",
+            f"Based on {target_cagr*100:.1f}% annual return assumption. Growth calculated on existing balance (full year) and new contributions (half year average)."
+        )
         
-        with col_port1:
-            st.markdown("**RRSP Portfolio**")
-            st.metric("Start of Year", f"${rrsp_balance_start:,.0f}")
-            st.metric("New Contributions", f"${total_rrsp_contributions:,.0f}", delta="+")
-            st.metric("Investment Growth", f"${rrsp_growth_existing + rrsp_growth_new_contrib:,.0f}", delta=f"+{target_cagr*100:.1f}%")
-            st.metric("Projected End of Year", f"${rrsp_balance_end:,.0f}", 
-                     delta=f"+${rrsp_balance_end - rrsp_balance_start:,.0f}")
+        # Create portfolio table
+        portfolio_table_data = []
         
-        with col_port2:
-            st.markdown("**TFSA Portfolio**")
-            st.metric("Start of Year", f"${tfsa_balance_start:,.0f}")
-            st.metric("New Contributions", f"${tfsa_lump_sum:,.0f}", delta="+")
-            st.metric("Investment Growth", f"${tfsa_growth_existing + tfsa_growth_new_contrib:,.0f}", delta=f"+{target_cagr*100:.1f}%")
-            st.metric("Projected End of Year", f"${tfsa_balance_end:,.0f}",
-                     delta=f"+${tfsa_balance_end - tfsa_balance_start:,.0f}")
+        # RRSP Row
+        portfolio_table_data.append({
+            "Account": "RRSP",
+            "Start Balance": f"${rrsp_balance_start:,.0f}",
+            "New Contributions": f"${total_rrsp_contributions:,.0f}",
+            "Investment Growth": f"${rrsp_growth_existing + rrsp_growth_new_contrib:,.0f}",
+            "End Balance": f"${rrsp_balance_end:,.0f}",
+            "Net Gain": f"${rrsp_balance_end - rrsp_balance_start:,.0f}"
+        })
         
-        with col_port3:
-            st.markdown("**Combined Wealth**")
-            total_start = rrsp_balance_start + tfsa_balance_start
-            total_contributions = total_rrsp_contributions + tfsa_lump_sum
-            total_growth = (rrsp_growth_existing + rrsp_growth_new_contrib + 
-                          tfsa_growth_existing + tfsa_growth_new_contrib)
-            
-            st.metric("Start of Year", f"${total_start:,.0f}")
-            st.metric("Total Contributions", f"${total_contributions:,.0f}", delta="+")
-            st.metric("Total Growth", f"${total_growth:,.0f}", delta=f"+{target_cagr*100:.1f}%")
-            st.metric("Projected End of Year", f"${total_portfolio_value:,.0f}",
-                     delta=f"+${total_portfolio_value - total_start:,.0f}")
+        # TFSA Row
+        portfolio_table_data.append({
+            "Account": "TFSA",
+            "Start Balance": f"${tfsa_balance_start:,.0f}",
+            "New Contributions": f"${tfsa_lump_sum:,.0f}",
+            "Investment Growth": f"${tfsa_growth_existing + tfsa_growth_new_contrib:,.0f}",
+            "End Balance": f"${tfsa_balance_end:,.0f}",
+            "Net Gain": f"${tfsa_balance_end - tfsa_balance_start:,.0f}"
+        })
+        
+        # Total Row
+        total_start = rrsp_balance_start + tfsa_balance_start
+        total_contributions = total_rrsp_contributions + tfsa_lump_sum
+        total_growth = (rrsp_growth_existing + rrsp_growth_new_contrib + 
+                      tfsa_growth_existing + tfsa_growth_new_contrib)
+        
+        portfolio_table_data.append({
+            "Account": "**TOTAL**",
+            "Start Balance": f"**${total_start:,.0f}**",
+            "New Contributions": f"**${total_contributions:,.0f}**",
+            "Investment Growth": f"**${total_growth:,.0f}**",
+            "End Balance": f"**${total_portfolio_value:,.0f}**",
+            "Net Gain": f"**${total_portfolio_value - total_start:,.0f}**"
+        })
+        
+        df_portfolio = pd.DataFrame(portfolio_table_data)
+        
+        st.dataframe(
+            df_portfolio,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Account": st.column_config.TextColumn("Account", width="small"),
+                "Start Balance": st.column_config.TextColumn("Start of Year", width="medium"),
+                "New Contributions": st.column_config.TextColumn("Contributions", width="medium"),
+                "Investment Growth": st.column_config.TextColumn(f"Growth @ {target_cagr*100:.1f}%", width="medium"),
+                "End Balance": st.column_config.TextColumn("Projected End", width="medium"),
+                "Net Gain": st.column_config.TextColumn("Total Gain", width="medium")
+            }
+        )
+        
+        # Quick insights
+        col_insight1, col_insight2, col_insight3 = st.columns(3)
+        
+        with col_insight1:
+            growth_rate_actual = ((total_growth / max(1, total_start)) * 100) if total_start > 0 else 0
+            st.metric("Portfolio Growth Rate", f"{growth_rate_actual:.2f}%", 
+                     help="Actual growth rate on starting balance")
+        
+        with col_insight2:
+            contribution_impact = ((total_contributions / max(1, total_portfolio_value)) * 100)
+            st.metric("Contribution Impact", f"{contribution_impact:.1f}%",
+                     help="% of end value from new contributions")
+        
+        with col_insight3:
+            investment_impact = ((total_growth / max(1, total_portfolio_value)) * 100)
+            st.metric("Investment Impact", f"{investment_impact:.1f}%",
+                     help="% of end value from market growth")
     
     st.divider()
     
@@ -1037,23 +1359,30 @@ else:
         </div>
     """, unsafe_allow_html=True)
     
-    ac1, ac2, ac3, ac4 = st.columns(4)
+    ac1, ac2, ac3, ac4, ac5 = st.columns(5)
     
     with ac1:
         st.metric(
-            "RRSP Lump Sum Due",
-            f"${rrsp_lump_sum:,.0f}",
-            help="One-time deposit needed before deadline"
+            "RRSP Optimization",
+            f"${rrsp_lump_sum_optimization:,.0f}",
+            help="Strategic deposit for tax bracket optimization"
         )
     
     with ac2:
         st.metric(
-            "TFSA Deployment",
-            f"${tfsa_lump_sum:,.0f}",
-            help="Planned TFSA contribution"
+            "RRSP Additional",
+            f"${rrsp_lump_sum_additional:,.0f}",
+            help="Extra contributions for maximum refund"
         )
     
     with ac3:
+        st.metric(
+            "TFSA Deposit",
+            f"${tfsa_lump_sum:,.0f}",
+            help="Tax-free savings contribution"
+        )
+    
+    with ac4:
         st.metric(
             "Expected Refund",
             f"${estimated_refund:,.0f}",
@@ -1061,7 +1390,7 @@ else:
             help="Tax refund from all RRSP contributions"
         )
     
-    with ac4:
+    with ac5:
         net_cashflow = estimated_refund - rrsp_lump_sum - tfsa_lump_sum
         st.metric(
             "Net Cashflow Impact",
