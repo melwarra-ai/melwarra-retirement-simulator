@@ -4,7 +4,6 @@ import altair as alt
 import json
 import os
 import streamlit.components.v1 as components
-from datetime import datetime, timedelta
 
 # --- 1. PERSISTENCE ENGINE ---
 SAVE_FILE = "retirement_history.json"
@@ -115,44 +114,6 @@ def calculate_annual_rrsp(data):
                 data.get('rrsp_lump_sum', 0)  # Legacy support
     
     return periodic_rrsp + lump_sum
-
-def get_rrsp_deadline(tax_year):
-    """
-    Calculate the RRSP contribution deadline for a given tax year.
-    The deadline is March 1st of the following year, adjusted for weekends.
-    If March 1st falls on a weekend, the deadline moves to the next business day.
-    
-    Args:
-        tax_year: The tax year (e.g., 2025)
-    
-    Returns:
-        tuple: (deadline_date, formatted_string, days_until_deadline)
-    """
-    # RRSP deadline is March 1st of the year AFTER the tax year
-    deadline_year = tax_year + 1
-    deadline_date = datetime(deadline_year, 3, 1)
-    
-    # Adjust for weekends
-    # 5 = Saturday, 6 = Sunday
-    weekday = deadline_date.weekday()
-    
-    if weekday == 5:  # Saturday
-        deadline_date += timedelta(days=2)  # Move to Monday
-        weekend_note = " (Monday, as March 1st is Saturday)"
-    elif weekday == 6:  # Sunday
-        deadline_date += timedelta(days=1)  # Move to Monday
-        weekend_note = " (Monday, as March 1st is Sunday)"
-    else:
-        weekend_note = ""
-    
-    # Format the date
-    formatted_date = deadline_date.strftime("%B %d, %Y")
-    
-    # Calculate days until deadline from today
-    today = datetime.now()
-    days_until = (deadline_date - today).days
-    
-    return deadline_date, formatted_date + weekend_note, days_until
 
 def is_year_optimized(year_data):
     """Check if a year is optimized (minimizing penthouse exposure)"""
@@ -278,11 +239,6 @@ st.markdown("""
         border-left: 4px solid #3b82f6;
     }
     
-    .priority-success {
-        background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
-        border-left: 4px solid #10b981;
-    }
-    
     h1, h2, h3 {
         font-weight: 600;
         color: #1e293b;
@@ -403,19 +359,6 @@ if st.session_state.current_page == "Home":
     
     # Header
     st.title(f"🏛️ Tax Optimization Strategy: {selected_year}")
-    
-    # Show deadline alert at the top
-    deadline_date, deadline_formatted, days_until = get_rrsp_deadline(selected_year)
-    
-    if days_until < 0:
-        st.error(f"🔴 **DEADLINE PASSED**: The RRSP contribution deadline for {selected_year} was {deadline_formatted}. "
-                f"Any contributions made now will apply to tax year {selected_year + 1}.")
-    elif days_until <= 30:
-        st.warning(f"🟠 **URGENT**: Only {days_until} days until the RRSP deadline ({deadline_formatted})! "
-                  f"Complete your contributions for {selected_year} immediately.")
-    elif days_until <= 90:
-        st.info(f"🟡 **UPCOMING**: {days_until} days until the RRSP deadline ({deadline_formatted}). "
-               f"Start planning your {selected_year} contributions.")
     
     # Status Card
     col_status1, col_status2 = st.columns([3, 1])
@@ -757,59 +700,7 @@ if st.session_state.current_page == "Home":
     st.divider()
     
     # March 1st Deadline Dashboard
-    deadline_date, deadline_formatted, days_until = get_rrsp_deadline(selected_year)
-    
-    st.markdown(f"### 📅 RRSP Contribution Deadline for {selected_year}")
-    
-    # Show deadline prominently
-    col_deadline_info = st.columns([2, 1])
-    with col_deadline_info[0]:
-        st.markdown(f"""
-            <div class="premium-card" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-left: 4px solid #f59e0b;">
-                <h3 style="margin-top: 0; color: #78350f;">⏰ Critical Deadline: {deadline_formatted}</h3>
-                <p style="font-size: 1.1em; color: #78350f;">
-                    <strong>You have {days_until} days</strong> to make RRSP contributions that count for tax year {selected_year}.
-                </p>
-                <p style="color: #92400e; margin-bottom: 0;">
-                    ⚠️ Contributions made after this deadline will apply to tax year {selected_year + 1} instead.
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        st.caption(f"💡 **Note**: This deadline is calculated based on CRA rules (March 1st or next business day if weekend). "
-                  f"Always verify the exact deadline at [canada.ca/taxes](https://www.canada.ca/en/services/taxes.html) as exceptions may apply.")
-    
-    with col_deadline_info[1]:
-        # Urgency indicator
-        if days_until < 0:
-            urgency_color = "#dc2626"
-            urgency_text = "DEADLINE PASSED"
-            urgency_emoji = "🔴"
-        elif days_until <= 30:
-            urgency_color = "#ea580c"
-            urgency_text = "URGENT"
-            urgency_emoji = "🟠"
-        elif days_until <= 60:
-            urgency_color = "#f59e0b"
-            urgency_text = "APPROACHING"
-            urgency_emoji = "🟡"
-        else:
-            urgency_color = "#16a34a"
-            urgency_text = "ON TRACK"
-            urgency_emoji = "🟢"
-        
-        st.markdown(f"""
-            <div style="text-align: center; padding: 30px; background: white; border-radius: 12px; border: 3px solid {urgency_color};">
-                <div style="font-size: 3em;">{urgency_emoji}</div>
-                <div style="font-size: 1.5em; font-weight: 600; color: {urgency_color}; margin-top: 10px;">
-                    {urgency_text}
-                </div>
-                <div style="font-size: 2em; font-weight: 700; color: {urgency_color}; margin-top: 5px;">
-                    {days_until}
-                </div>
-                <div style="color: #64748b;">days remaining</div>
-            </div>
-        """, unsafe_allow_html=True)
+    st.markdown(f"### 📅 March 1st Deadline Dashboard ({selected_year + 1})")
     
     col_deadline = st.columns([3, 1])
     with col_deadline[1]:
@@ -825,9 +716,9 @@ if st.session_state.current_page == "Home":
     
     st.markdown(f"""
         <div class="premium-card">
-            <h4>Critical Action Items Before {deadline_formatted}</h4>
+            <h4>Critical Action Items Before March 1, {selected_year + 1}</h4>
             <p style="color: #64748b; margin-bottom: 20px;">
-                These deposits must be completed by the deadline to claim deductions for tax year {selected_year}
+                These deposits must be completed to claim deductions for tax year {selected_year}
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -1002,17 +893,17 @@ if st.session_state.current_page == "Home":
         
         if employee_contribution > 0:
             if biweekly_pct >= employer_match_cap:
-                # Maximizing match - SUCCESS (Green)
+                # Maximizing match
                 insights.append({
-                    "icon": "✅",
+                    "icon": "🎁",
                     "title": "Excellent: Maximizing Employer Match",
                     "message": f"You're contributing {biweekly_pct:.1f}% (${employee_contribution:,.0f}) and your employer is matching "
                               f"{employer_match_cap:.1f}% (${employer_contribution:,.0f}). You're getting the full match! "
                               f"This is ${employer_contribution:,.0f} of free money every year. Keep it up!",
-                    "priority": "success"
+                    "priority": "high"
                 })
             else:
-                # Not maximizing match - HIGH PRIORITY WARNING (Yellow)
+                # Not maximizing match
                 missed_match = base_salary * (employer_match_cap - biweekly_pct) / 100
                 insights.append({
                     "icon": "⚠️",
@@ -1024,7 +915,7 @@ if st.session_state.current_page == "Home":
                     "priority": "high"
                 })
         else:
-            # Not contributing at all - CRITICAL (Yellow/Red)
+            # Not contributing at all
             potential_match = base_salary * (employer_match_cap / 100)
             insights.append({
                 "icon": "🚨",
@@ -1055,7 +946,7 @@ if st.session_state.current_page == "Home":
             "message": f"Your contribution room utilization is {efficiency_score*100:.1f}%. "
                       f"You're making excellent use of your available tax-advantaged space. "
                       f"Keep up this disciplined approach to wealth building!",
-            "priority": "success"
+            "priority": "high"
         })
     
     # Display insights
@@ -1078,14 +969,11 @@ st.markdown("""
         <p><strong>Canadian Tax & Wealth Velocity Suite</strong></p>
         <p style="font-size: 0.9em;">
             Tax rates are based on 2025/2026 Ontario combined federal + provincial brackets. 
-            RRSP contribution deadlines are calculated automatically (March 1st or next business day).
-            Always verify critical information at <a href="https://www.canada.ca/en/services/taxes.html" target="_blank">canada.ca/taxes</a> 
-            and consult with a qualified tax professional for personalized advice.
+            Always consult with a qualified tax professional for personalized advice.
         </p>
         <p style="font-size: 0.85em; margin-top: 10px;">
             RRSP contribution limit: 18% of previous year's income (max $31,560) | 
-            TFSA annual limit: $7,000 | 
-            Deadlines auto-calculated with weekend adjustment
+            TFSA annual limit: $7,000
         </p>
     </div>
 """, unsafe_allow_html=True)
