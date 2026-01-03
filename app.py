@@ -977,7 +977,7 @@ st.markdown("""
         </p>
     </div>
 """, unsafe_allow_html=True)
-    
+
     with col_status2:
         if is_optimized:
             st.markdown("""
