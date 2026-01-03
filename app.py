@@ -1470,49 +1470,48 @@ st.markdown("""
     
     description_box(
         "Year-by-Year Strategy Navigator",
-        "**Manage Your Planning Years:** Use the controls below to add new years (2020-2050) or remove years you no longer need. "
-        "Click any year tile to view and optimize that tax year. Years start from 2025 by default. "
-        "**Status Colors:** 🔵 Light blue = not started (ready to plan), 🟠 Orange = in progress (needs optimization), 🟢 Green = optimized (tax efficient)."
+        "**Manage Your Planning Years:** Use ➕ Add to create new years for planning (starting from 2025 by default). "
+        "Use ❌ Remove to delete years you no longer need. Click any year tile to view and optimize that tax year. "
+        "**Status Colors:** Light blue = not started (ready to plan), Orange = in progress (needs optimization), "
+        "Green = optimized (tax efficient strategy complete)."
     )
     
-    # Enhanced Status Legend with visual badges
+    # Status Legend
     st.markdown("""
-        <div style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); padding: 18px; border-radius: 10px; margin-bottom: 24px; border-left: 4px solid #3b82f6; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
-            <strong style="font-size: 1.05em; color: #1e293b;">📊 Status Guide:</strong>
-            <div style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 12px;">
-                <span style="padding: 10px 18px; background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border-radius: 8px; border: 2px solid #bae6fd; font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                    ⚪ Not Started
+        <div style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); padding: 18px; border-radius: 10px; margin-bottom: 20px; border-left: 4px solid #3b82f6;">
+            <strong style="font-size: 1.05em;">📊 Status Guide:</strong>
+            <div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 20px;">
+                <span style="padding: 8px 16px; background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border-radius: 6px; border: 1px solid #bae6fd;">
+                    ⚪ <strong>Not Started</strong> - Ready for planning
                 </span>
-                <span style="padding: 10px 18px; background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%); border-radius: 8px; border: 2px solid #f97316; font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                    ⏳ In Progress
+                <span style="padding: 8px 16px; background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%); border-radius: 6px; border: 1px solid #f97316;">
+                    ⏳ <strong>In Progress</strong> - Needs optimization
                 </span>
-                <span style="padding: 10px 18px; background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border-radius: 8px; border: 2px solid #10b981; font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                    ✅ Optimized
+                <span style="padding: 8px 16px; background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border-radius: 6px; border: 1px solid #10b981;">
+                    ✅ <strong>Optimized</strong> - Tax efficient
                 </span>
             </div>
         </div>
     """, unsafe_allow_html=True)
     
-    # Year Management Controls
+    # Add/Remove year functionality
     st.markdown("#### ⚙️ Manage Planning Years")
     
-    col_add1, col_add2, col_add3, col_add4 = st.columns([2.5, 1.5, 2.5, 1.5])
+    col_add1, col_add2, col_add3, col_add4 = st.columns([2, 1, 2, 1])
     
     with col_add1:
         new_year_input = st.number_input(
-            "➕ Year to Add",
+            "Year to Add",
             min_value=2020,
             max_value=2050,
             value=2031,
             step=1,
             key="new_year_input",
-            help="Enter any year between 2020-2050 to add to your planning"
+            help="Enter any year between 2020-2050"
         )
     
     with col_add2:
-        st.write("")  # Spacing
-        st.write("")  # Spacing
-        add_button = st.button("Add Year", use_container_width=True, type="primary")
+        add_button = st.button("➕ Add", use_container_width=True, type="primary")
         if add_button:
             if str(new_year_input) not in all_history:
                 save_year_data(new_year_input, {
@@ -1530,32 +1529,30 @@ st.markdown("""
                     "tfsa_balance_start": 0,
                     "target_cagr": 7.0
                 })
-                st.success(f"✓ Year {new_year_input} added successfully!")
+                st.success(f"✓ {new_year_input} added successfully!")
                 st.rerun()
             else:
-                st.error(f"Year {new_year_input} already exists")
+                st.error(f"❌ Year {new_year_input} already exists in your plan")
     
     with col_add3:
         if len(all_history) > 0:
             years_to_delete = [int(yr) for yr in all_history.keys()]
             delete_year_input = st.selectbox(
-                "❌ Year to Remove",
+                "Year to Remove",
                 options=sorted(years_to_delete, reverse=True),
                 key="delete_year_input",
-                help="Select a saved year to permanently remove from your planning"
+                help="Select a saved year to permanently remove"
             )
         else:
-            st.info("💡 No saved years yet")
             delete_year_input = None
+            st.info("💡 No saved years to remove yet")
     
     with col_add4:
         if delete_year_input and len(all_history) > 0:
-            st.write("")  # Spacing
-            st.write("")  # Spacing
-            remove_button = st.button("Remove Year", use_container_width=True)
+            remove_button = st.button("❌ Remove", use_container_width=True)
             if remove_button:
                 if delete_year_data(delete_year_input):
-                    st.success(f"✓ Year {delete_year_input} removed!")
+                    st.success(f"✓ {delete_year_input} removed successfully!")
                     st.rerun()
                 else:
                     st.error(f"Failed to remove {delete_year_input}")
@@ -1563,17 +1560,15 @@ st.markdown("""
     st.markdown("---")
     
     # Get all years (saved + default range starting from 2025)
-    default_years = set(range(2025, 2031))
+    default_years = set(range(2025, 2031))  # Changed from 2024 to 2025
     all_years = default_years.copy()
     all_years.update([int(yr) for yr in all_history.keys()])
     years_to_show = sorted(list(all_years))
     
-    # Display timeline info
-    if years_to_show:
-        st.markdown(f"**📆 Planning Timeline:** Displaying {len(years_to_show)} years from **{min(years_to_show)}** to **{max(years_to_show)}**")
-        st.write("")  # Spacing
+    # Display year count
+    st.markdown(f"**Planning Timeline:** Showing {len(years_to_show)} years ({min(years_to_show)} - {max(years_to_show)})")
+    st.markdown("")  # Spacing
     
-    # Display year tiles
     cols_per_row = 4
     
     for row_start in range(0, len(years_to_show), cols_per_row):
@@ -1585,18 +1580,11 @@ st.markdown("""
                 
                 # Determine status and styling
                 if not is_saved:
-                    # Light Blue - Not Started (clean, professional)
+                    # Light Blue/Grey - Empty (professional, clean look)
                     status_emoji = "⚪"
                     status_text = "Not Started"
                     button_label = f"📅 **{yr}**\n{status_emoji} {status_text}"
-                    container_style = """
-                        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); 
-                        border: 2px solid #bae6fd; 
-                        border-radius: 12px; 
-                        padding: 4px; 
-                        box-shadow: 0 2px 4px rgba(186, 230, 253, 0.3);
-                        transition: all 0.3s ease;
-                    """
+                    container_style = "background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border: 2px solid #bae6fd; border-radius: 12px; padding: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);"
                 elif is_optimized:
                     # Green - Optimized
                     data = all_history[str(yr)]
@@ -1604,14 +1592,7 @@ st.markdown("""
                     status_emoji = "✅"
                     status_text = f"${annual_rrsp:,.0f}"
                     button_label = f"📅 **{yr}**\n{status_text}\n{status_emoji} Optimized"
-                    container_style = """
-                        background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); 
-                        border: 2px solid #10b981; 
-                        border-radius: 12px; 
-                        padding: 4px; 
-                        box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
-                        transition: all 0.3s ease;
-                    """
+                    container_style = "background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border: 2px solid #10b981; border-radius: 12px; padding: 4px; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);"
                 else:
                     # Orange - In Progress
                     data = all_history[str(yr)]
@@ -1619,22 +1600,15 @@ st.markdown("""
                     status_emoji = "⏳"
                     status_text = f"${annual_rrsp:,.0f}"
                     button_label = f"📅 **{yr}**\n{status_text}\n{status_emoji} In Progress"
-                    container_style = """
-                        background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%); 
-                        border: 2px solid #f97316; 
-                        border-radius: 12px; 
-                        padding: 4px; 
-                        box-shadow: 0 2px 4px rgba(249, 115, 22, 0.3);
-                        transition: all 0.3s ease;
-                    """
+                    container_style = "background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%); border: 2px solid #f97316; border-radius: 12px; padding: 4px; box-shadow: 0 2px 4px rgba(249, 115, 22, 0.2);"
                 
                 # Wrap button in styled container
                 st.markdown(f'<div style="{container_style}">', unsafe_allow_html=True)
                 
-                # Create the clickable button
+                # Create the button
                 if st.button(
                     button_label,
-                    key=f"home_year_{yr}",
+                    key=f"home_{yr}",
                     use_container_width=True,
                     type="primary" if is_saved else "secondary"
                 ):
@@ -1643,9 +1617,7 @@ st.markdown("""
                     st.rerun()
                 
                 st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Add spacing between rows
-        st.markdown('<div style="height: 16px;"></div>', unsafe_allow_html=True)
+                st.markdown('<div style="height: 12px;"></div>', unsafe_allow_html=True)  # Spacing between rows
     
     # Multi-Year Analytics
     if all_history and len(all_history) > 1:
